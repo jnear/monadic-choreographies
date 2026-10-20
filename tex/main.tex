@@ -1,0 +1,2663 @@
+\documentclass[11pt]{report}
+\usepackage[a4paper,margin=1.05in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{stmaryrd}
+\usepackage{mathpartir}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage[colorlinks=true,linkcolor=blue!55!black,citecolor=blue!55!black,urlcolor=blue!55!black]{hyperref}
+
+%%% Theorem environments
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[chapter]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\newtheorem{choice}{Choice}[chapter]
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+%%% Roles and basics
+\newcommand{\kw}[1]{\mathsf{#1}}
+\newcommand{\pp}{\mathsf{p}}
+\newcommand{\qq}{\mathsf{q}}
+\newcommand{\rr}{\mathsf{r}}
+\newcommand{\sr}{\mathsf{s}}
+\newcommand{\tr}{\mathsf{t}}
+\newcommand{\Roles}{\mathcal{R}}
+\newcommand{\ttrue}{\kw{tt}}
+\newcommand{\ffalse}{\kw{ff}}
+\newcommand{\fv}{\mathrm{fv}}
+
+%%% Choreographies
+\newcommand{\bind}[3]{#1 \leftarrow #2\,;\;#3}
+\newcommand{\cret}[1]{\kw{ret}\;#1}
+\newcommand{\com}[3]{#1.#2 \to #3}
+\newcommand{\cif}[4]{\kw{if}\;#1.#2\;\kw{then}\;#3\;\kw{else}\;#4}
+\newcommand{\mbind}[3]{#1 \mathbin{>\!\!>\!\!=} #2.\,#3}
+\newcommand{\rt}[3]{\langle #1 : #2\rangle\,#3}
+\newcommand{\unfold}[1]{\mathrm{unfold}(#1)}
+\newcommand{\roles}[1]{\mathrm{roles}(#1)}
+\newcommand{\rcv}[1]{\mathrm{rcv}(#1)}
+\newcommand{\loc}[1]{\mathrm{loc}(#1)}
+\newcommand{\WF}{\mathrm{WF}}
+\newcommand{\pay}[1]{\lvert #1\rvert}
+
+%%% Labels and steps
+\newcommand{\tauat}[1]{\tau\mathord{@}#1}
+\newcommand{\castlbl}[3]{#1.#2 \rightsquigarrow #3}
+\newcommand{\lto}[1]{\xrightarrow{\;#1\;}}
+\newcommand{\seqto}{\to_{\mathrm{seq}}}
+
+%%% Networks
+\newcommand{\nsend}[2]{\kw{send}\;#1\;#2}
+\newcommand{\nrecv}[1]{\kw{recv}\;#1}
+\newcommand{\sendbr}[4]{#1!#2 \mathbin{\triangleright} (#3,\,#4)}
+\newcommand{\recvbr}[3]{#1?(#2,\,#3)}
+\newcommand{\upd}[3]{#1[#2 \mapsto #3]}
+\newcommand{\nfun}[3]{\kw{fun}\;#1(#2).\;#3}
+
+%%% Projection
+\newcommand{\proj}[2]{\llbracket #1 \rrbracket_{#2}}
+\newcommand{\projn}[1]{\llbracket #1 \rrbracket}
+\newcommand{\pre}[3]{\llbracket #1 \rrbracket^{#2}_{#3}}
+
+%%% Functions
+\newcommand{\Sig}{\Sigma}
+\newcommand{\Defs}{\mathcal{D}}
+\newcommand{\farr}[3]{(#1) \xrightarrow{#2} #3}
+\newcommand{\cfun}[5]{\kw{fun}\;#1(#2) \xrightarrow{#3} #4.\;#5}
+
+%%% Proof layout
+\newcommand{\rn}[1]{{\normalfont\scshape #1}}
+\newcommand{\case}[1]{\medskip\noindent\textbf{Case #1.}\;}
+\newcommand{\subcase}[1]{\smallskip\noindent\textit{Subcase #1.}\;}
+
+\title{Monadic Choreographies}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+  We develop four choreographic languages of increasing expressiveness:
+  local computation and communication; conditionals; first-order recursive
+  functions; and first-class, higher-order functions.  All four are written
+  in the normal form of a free monad, as a sequence of actions $\bind{x}{A}{C}$
+  ending in a return, and each feature is added as a new kind of action whose
+  result the continuation binds.  For each language, endpoint projection is a
+  strong bisimulation with identical labels whose network side is the
+  projection of the choreography itself: one choreography step matches one
+  network step, with no pruning relation, weak steps, or equivalence up to the
+  unfolding of calls.  We chose the languages to keep this proof short, and
+  we justify each design decision by the proof obligation it removes.
+\end{abstract}
+
+\tableofcontents
+
+%======================================================================
+\chapter*{Introduction}
+\addcontentsline{toc}{chapter}{Introduction}
+%======================================================================
+
+A choreography describes a distributed computation from a global point of
+view, as a single program in which each communication is an atomic
+interaction between two roles.  \emph{Endpoint projection} (EPP) compiles a
+choreography to a \emph{network}: one local program per role, communicating
+by message passing.  The central theorem of choreographic programming is that
+EPP is correct, meaning that a choreography and its projection behave the
+same.
+
+In most presentations the correspondence is looser than that.  One
+choreography step may correspond to several network steps, and a network may
+only be related to the projection of a choreography up to a \emph{pruning}
+relation, which discards branches that can no longer be taken, or up to the
+unfolding of procedure calls.  Each of these gaps needs its own auxiliary
+relation and lemmas about it, and the resulting proofs are hard to check.
+
+This document develops four languages without such gaps.  For each of them
+the relation
+\[
+  \{\,(C, \projn{C}) \mid C \text{ is well-typed (and, from Chapter~\ref{ch:fun} on, well-formed)}\,\}
+\]
+is a strong bisimulation with identical labels: one choreography step
+corresponds to one network step with the same label, and the network reached
+is the projection of the choreography reached.  We started from this goal and
+chose the languages to meet it.  Each chapter explains its design choices by
+the proof obligations they remove, and numbers them so that later chapters
+can refer back.
+
+\paragraph{The monadic style.}
+A choreography is a sequence of actions, each binding its result, ending in a
+return:
+\[
+  C \;::=\; \cret{\pp.a} \;\mid\; \bind{x}{A}{C}.
+\]
+This is the normal form of the free monad over the actions.  Chapter~\ref{ch:core}
+has two actions, local computation and communication.  Each later chapter
+adds a new kind of action: a conditional (Chapter~\ref{ch:cond}), a call to a
+named function (Chapter~\ref{ch:fun}), and the application of a first-class
+function (Chapter~\ref{ch:ho}).  Each new action returns a value that the
+continuation binds, so the language gains conditionals and functions that
+return values, and functions that are passed as arguments and returned as
+results.  The bind and the \rn{Delay} rule, which lets independent actions run
+out of order, stay the same throughout; Chapter~\ref{ch:fun} adds a companion
+rule, \rn{Inside}, for calls in progress.
+
+\paragraph{Proof architecture.}
+Every chapter proves the same theorem with the same skeleton.
+\begin{itemize}[nosep]
+\item \emph{Completeness}: if $C\lto{\ell}C'$ then $\projn{C}\lto{\ell}\projn{C'}$, by induction on the step.
+\item \emph{Soundness}: if $\projn{C}\lto{\ell}N$ then $C\lto{\ell}C'$ for some $C'$ with $N=\projn{C'}$, by induction on $C$.
+\end{itemize}
+Both rest on the same supporting lemmas: substitution and subject reduction;
+\emph{projection is local} (a role's program mentions only that role's
+variables); \emph{projection commutes with substitution}; a
+\emph{choreographic frame} lemma (a step does not change the projection at a
+role it does not involve); a \emph{network frame} lemma (the same for
+networks); and \emph{inversion} for network steps.  Each later chapter
+re-proves these lemmas by adding cases for its new constructs, and adds a few
+new lemmas of its own.
+
+\paragraph{Roadmap.}
+Chapter~\ref{ch:core} treats local computation and synchronous
+communication.  Chapter~\ref{ch:cond} adds conditionals, implemented by
+multicasting the guard to every participant of either branch; there are no
+selections and no merging.  Chapter~\ref{ch:fun} adds first-order recursive
+functions.  Calls are entered one role at a time, which requires one runtime
+term and a well-formedness invariant.  Chapter~\ref{ch:ho} removes named
+functions altogether and replaces them with first-class recursive functions,
+each located at the set of roles that run it.
+
+%======================================================================
+\chapter{Core Choreographies}
+\label{ch:core}
+%======================================================================
+
+The first language has two actions, local computation and synchronous
+communication, sequenced by a monadic bind.  Endpoint projection is a strong
+bisimulation with identical labels: every network reachable from the
+projection of a choreography is the projection of a choreography reachable
+from it (Theorem~\ref{thm:c1-epp}).  With confluence
+(Theorem~\ref{thm:c1-agree}), it follows that every run of the network
+computes the result of the sequential reading of the choreography.
+
+\section{Design choices}
+\label{sec:c1-choices}
+
+A step of the network is taken by one role (a local computation) or by two
+roles together (a communication), and roles not involved in it are untouched.
+For a choreography to match the network step for step, three things must
+hold: the choreography must be able to perform any action its roles are ready
+for, regardless of program order; an action must take exactly one step; and a
+role that is not involved in an action must not be required to do anything for
+it.  The following choices secure these properties.
+
+\begin{choice}[Actions are fused with bind]\label{cho:c1-fused}
+  The syntax is the free monad's normal form $\bind{x}{A}{C}$: every action is
+  immediately followed by the continuation that binds its result.  General
+  bind is a derived operation on syntax (Definition~\ref{def:c1-bind}), not a
+  term former.
+
+  \emph{Proof saved.}  An action step resumes its continuation directly.
+  Neither semantics has a step that reduces a bind, so neither has steps that
+  are administrative relative to the other.  Projection maps
+  $\bind{x}{A}{C}$ to a fixed \emph{prefix} followed by the projection of $C$
+  (Definition~\ref{def:c1-epp}); most proof cases for \rn{Delay} are then the
+  observation that both sides have the same prefix.
+\end{choice}
+
+\begin{choice}[Projection erases uninvolved actions]\label{cho:c1-erase}
+  A role that is not involved in an action gets nothing for it, rather than a
+  bind of a dummy value such as $\bind{x}{\kw{ret}\;\bot}{\cdots}$.
+
+  \emph{Proof saved.}  Uninvolved roles take no administrative steps, so one
+  choreography step is matched by one network step.  The frame lemmas (Lemmas~\ref{lem:c1-cframe}
+  and~\ref{lem:c1-nframe}) become one-line arguments.  The cost is that the
+  bound variable disappears from the programs of uninvolved roles, which is
+  safe because typing guarantees they never mention it
+  (Lemma~\ref{lem:c1-local}).
+\end{choice}
+
+\begin{choice}[Substitution, not stores]\label{cho:c1-subst}
+  Values flow by substitution: \rn{Local} and \rn{Com} substitute the
+  computed or received value for the bound variable, at both levels.  There
+  is no store.
+
+  \emph{Proof saved.}  Configurations are just terms.  There is no
+  store-locality lemma; locality is instead a typing fact
+  (Lemma~\ref{lem:c1-local}), and a single lemma relates substitution at the
+  two levels (Lemma~\ref{lem:c1-psubst}).
+\end{choice}
+
+\begin{choice}[Values are required only where they appear in labels]\label{cho:c1-values}
+  Local computation takes an expression and evaluates it.  Communication
+  takes an \emph{atom} (a variable or a value) and fires only when the atom
+  is a value; that value appears in the label.
+
+  \emph{Proof saved.}  \rn{Com} has no premise, and its label determines its
+  effect, which gives label determinacy (Lemma~\ref{lem:c1-det}).  \rn{Delay}
+  needs no side condition on variables (Remark~\ref{rem:c1-delay}): an action
+  that uses a variable bound by a pending action cannot fire, because its
+  expression is not closed or its atom is not a value.  Later chapters
+  extend this principle: the guard of a conditional must be a value because
+  it appears in the label, but nothing in a function call has to be.
+\end{choice}
+
+\begin{choice}[Synchronous communication]\label{cho:c1-sync}
+  A communication is a single rendezvous between sender and receiver.
+
+  \emph{Proof saved.}  There are no message queues in networks and no runtime
+  term in choreographies for messages that are sent but not yet received.
+  One global communication is one network step.
+\end{choice}
+
+\begin{choice}[Out-of-order execution by a single rule]\label{cho:c1-delay}
+  The rule \rn{Delay} lets an action step under pending binds when its roles
+  are disjoint from theirs.  The sequential semantics, which only fires the
+  head action, is kept as the specification.
+
+  \emph{Proof saved.}  Roles of a network run independently, so without
+  \rn{Delay} the choreography could not match a network step taken by a role
+  whose actions come late in program order, and soundness would fail.  With
+  it, the choreography is as concurrent as the network, and by confluence
+  every run still computes the sequential result
+  (Theorem~\ref{thm:c1-agree}).
+\end{choice}
+
+\section{The local language}
+\label{sec:c1-local}
+
+The local language is a parameter, used both inside choreographies and inside
+local programs.  It provides:
+\begin{itemize}[nosep]
+\item expressions $e$, built from variables $x,y,z$ and closed \emph{values} $v$;
+\item capture-avoiding substitution $e[a/x]$ of an atom (defined below) for a
+  variable, with $e[a/x]=e$ when $x\notin\fv(e)$, and
+  $\fv(e[a/x])\subseteq(\fv(e)\setminus\{x\})\cup\fv(a)$;
+\item evaluation $e\Downarrow v$, defined only on closed expressions.
+\end{itemize}
+\emph{Atoms} are $a ::= x \mid v$, and every atom is an expression.  Two
+assumptions are used, each only where noted.
+\begin{description}[nosep,font=\normalfont\itshape]
+\item[(L1) Determinism.] If $e\Downarrow v$ and $e\Downarrow v'$ then
+  $v=v'$.  Used only for confluence (\S\ref{sec:c1-confluence}).
+\item[(L2) Totality.] Every closed $e$ evaluates to some $v$.  Used only for
+  deadlock freedom (\S\ref{sec:c1-df}) and for agreement with the sequential
+  semantics (Theorem~\ref{thm:c1-agree}).
+\end{description}
+The symbol $\bot$ is not a value.  It appears only in local programs, as the
+result a role returns when the result of the choreography is held elsewhere.
+
+\section{Syntax and typing}
+\label{sec:c1-syntax}
+
+Roles $\pp,\qq,\rr,\sr,\tr$ are drawn from a fixed finite set $\Roles$.
+
+\begin{definition}[Choreographies]\label{def:c1-syntax}
+  Actions $A$ and choreographies $C$ are given by
+  \[
+  \begin{array}{r@{\;\;}c@{\;\;}l@{\qquad}l}
+    A & ::= & \pp.e & \text{local computation at } \pp\\
+      & \mid & \com{\pp}{a}{\qq} & \text{communication from $\pp$ to $\qq$, with } \pp\neq\qq\\[1ex]
+    C & ::= & \cret{\pp.a} & \text{return a value held at } \pp\\
+      & \mid & \bind{x}{A}{C} & \text{run $A$, bind its result to $x$, continue as } C
+  \end{array}
+  \]
+  Each action has a set of roles and a location for its result:
+  \[
+  \begin{array}{l@{\qquad}l}
+    \roles{\pp.e} = \{\pp\} & \loc{\pp.e} = \pp\\
+    \roles{\com{\pp}{a}{\qq}} = \{\pp,\qq\} & \loc{\com{\pp}{a}{\qq}} = \qq
+  \end{array}
+  \]
+\end{definition}
+
+In $\bind{x}{A}{C}$ the variable $x$ is bound in $C$.  Terms are taken up to
+$\alpha$-equivalence, and $C[a/x]$ is capture-avoiding substitution of an
+atom for a variable, which acts on the expressions and atoms inside $C$.
+Since values are closed, substituting a value never captures.
+
+\begin{definition}[Bind]\label{def:c1-bind}
+  The derived bind $\mbind{C_1}{x}{C_2}$ is defined by recursion on $C_1$:
+  \[
+  \begin{array}{r@{\;\;=\;\;}l@{\qquad}l}
+    \mbind{(\cret{\pp.a})}{x}{C_2} & C_2[a/x]\\
+    \mbind{(\bind{y}{A}{C_1})}{x}{C_2} & \bind{y}{A}{(\mbind{C_1}{x}{C_2})} & (y\notin\fv(C_2)\cup\{x\})
+  \end{array}
+  \]
+\end{definition}
+
+Bind walks only the spine of $C_1$, the sequence of actions leading to its
+return.  It is associative,
+$\mbind{(\mbind{C_1}{x}{C_2})}{y}{C_3} = \mbind{C_1}{x}{(\mbind{C_2}{y}{C_3})}$,
+by induction on $C_1$, and $\cret{}$ is a left unit by definition.  It plays no
+role in the semantics of this chapter; from Chapter~\ref{ch:cond} on, it is
+how the result of a compound action is passed to its continuation.
+
+\paragraph{Location typing.}
+Typing checks one thing: each role uses only data it holds.  A context
+$\Gamma$ maps variables to roles.  Write $\Gamma\vdash_\pp e$ when $\Gamma(x)=\pp$
+for every $x\in\fv(e)$; this applies to atoms too.
+
+\begin{definition}[Typing]\label{def:c1-typing}
+  The judgement $\Gamma\vdash C$ is given by
+  \begin{mathpar}
+    \inferrule{\Gamma\vdash_\pp a}{\Gamma\vdash\cret{\pp.a}}
+    \and
+    \inferrule{\Gamma\vdash_\pp e \\ \Gamma,x{:}\pp\vdash C}{\Gamma\vdash\bind{x}{\pp.e}{C}}
+    \and
+    \inferrule{\pp\neq\qq \\ \Gamma\vdash_\pp a \\ \Gamma,x{:}\qq\vdash C}{\Gamma\vdash\bind{x}{\com{\pp}{a}{\qq}}{C}}
+  \end{mathpar}
+  A \emph{program} is a choreography $C$ with $\emptyset\vdash C$.
+\end{definition}
+
+In both action rules the bound variable is held at $\loc{A}$, the role that
+holds the action's result.  The metatheory is stated for open terms,
+$\Gamma\vdash C$, because the inductions go under binders.  If the local
+language is typed, roles in $\Gamma$ can be replaced by located types
+$t\mathord{@}\pp$; nothing below changes.
+
+\section{Choreographic semantics}
+\label{sec:c1-sem}
+
+The semantics is a labelled transition system on choreographies.  Labels
+record which roles acted:
+\[
+  \ell \;::=\; \tauat{\pp} \;\mid\; \com{\pp}{v}{\qq}
+  \qquad
+  \roles{\tauat{\pp}} = \{\pp\}
+  \qquad
+  \roles{\com{\pp}{v}{\qq}} = \{\pp,\qq\}.
+\]
+
+\begin{figure}[t]
+\begin{mathpar}
+  \inferrule*[right=\rn{Local}]
+    {e\Downarrow v}
+    {\bind{x}{\pp.e}{C} \lto{\tauat{\pp}} C[v/x]}
+  \and
+  \inferrule*[right=\rn{Com}]
+    { }
+    {\bind{x}{\com{\pp}{v}{\qq}}{C} \lto{\com{\pp}{v}{\qq}} C[v/x]}
+  \and
+  \inferrule*[right=\rn{Delay}]
+    {C\lto{\ell}C' \\ \roles{\ell}\cap\roles{A}=\emptyset}
+    {\bind{x}{A}{C} \lto{\ell} \bind{x}{A}{C'}}
+\end{mathpar}
+\caption{Semantics of core choreographies.}
+\label{fig:c1-sem}
+\end{figure}
+
+\begin{definition}[Semantics]\label{def:c1-sem}
+  The \emph{sequential semantics} $\seqto$ is the least relation closed under
+  \rn{Local} and \rn{Com} of Figure~\ref{fig:c1-sem}; only the head action can
+  fire, and it is the specification.  The \emph{out-of-order semantics}
+  $\lto{\ell}$ is the least relation closed under all three rules, and it is
+  the one projection is proved against.
+\end{definition}
+
+\begin{remark}[\rn{Delay} needs no side condition on $x$]\label{rem:c1-delay}
+  \rn{Local} fires only on a closed expression and \rn{Com} only when its atom
+  is a value, so an action under pending binds steps only if it uses none of
+  their variables.  For well-typed terms, role disjointness already implies
+  this: a variable bound by $A$ is held at $\loc{A}\in\roles{A}$, and only
+  actions at that role may use it.
+\end{remark}
+
+\section{Networks}
+\label{sec:c1-net}
+
+Each role runs a local program, and a network runs them all, with synchronous
+communication.
+
+\begin{definition}[Local programs and networks]\label{def:c1-net}
+  Local programs $P$ and prefixes $\pi$ are given by
+  \[
+  \begin{array}{r@{\;\;}c@{\;\;}l@{\qquad}l}
+    P & ::= & \kw{ret}\;a \;\mid\; \kw{ret}\;\bot & \text{return}\\
+      & \mid & \pi\,P & \text{prefixed program}\\[1ex]
+    \pi & ::= & x\leftarrow e\,; & \text{local computation}\\
+      & \mid & \nsend{\qq}{a}\,; & \text{send to } \qq\\
+      & \mid & x\leftarrow\nrecv{\pp}\,; & \text{receive from } \pp
+  \end{array}
+  \]
+  We also write $\varepsilon$ for the empty prefix, with $\varepsilon\,P = P$.
+  A \emph{network} $N$ is a function mapping every role in $\Roles$ to a local
+  program.  $\upd{N}{\pp}{P}$ updates one entry.  Two networks \emph{agree on}
+  a set of roles $S$ if they map every role in $S$ to the same program.  A
+  network is \emph{terminated} if every $N(\rr)$ is a return.
+\end{definition}
+
+\begin{figure}[t]
+\begin{mathpar}
+  \inferrule*[right=\rn{N-Local}]
+    {N(\pp) = x\leftarrow e\,;\,P \\ e\Downarrow v}
+    {N \lto{\tauat{\pp}} \upd{N}{\pp}{P[v/x]}}
+  \and
+  \inferrule*[right=\rn{N-Com}]
+    {N(\pp) = \nsend{\qq}{v}\,;\,P \\ N(\qq) = x\leftarrow\nrecv{\pp}\,;\,P'}
+    {N \lto{\com{\pp}{v}{\qq}} N[\pp\mapsto P,\ \qq\mapsto P'[v/x]]}
+\end{mathpar}
+\caption{Semantics of networks.}
+\label{fig:c1-net}
+\end{figure}
+
+The semantics of networks is given in Figure~\ref{fig:c1-net}.  A step reads
+and changes only the programs of the roles in its label
+(Lemma~\ref{lem:c1-nframe}).
+
+\section{Endpoint projection}
+\label{sec:c1-epp}
+
+Projection is total and needs no merging: each role keeps exactly the actions
+it takes part in.
+
+\begin{definition}[Endpoint projection]\label{def:c1-epp}
+  The projection of a choreography onto a role $\rr$ is
+  \[
+  \proj{\cret{\pp.a}}{\rr} =
+    \begin{cases}
+      \kw{ret}\;a & \rr = \pp\\
+      \kw{ret}\;\bot & \text{otherwise}
+    \end{cases}
+  \qquad\qquad
+  \proj{\bind{x}{A}{C}}{\rr} = \pre{A}{x}{\rr}\,\proj{C}{\rr}
+  \]
+  where the prefix $\pre{A}{x}{\rr}$ contributed by an action is
+  \[
+  \pre{\pp.e}{x}{\rr} =
+    \begin{cases}
+      x\leftarrow e\,; & \rr=\pp\\
+      \varepsilon & \text{otherwise}
+    \end{cases}
+  \qquad
+  \pre{\com{\pp}{a}{\qq}}{x}{\rr} =
+    \begin{cases}
+      \nsend{\qq}{a}\,; & \rr=\pp\\
+      x\leftarrow\nrecv{\pp}\,; & \rr=\qq\\
+      \varepsilon & \text{otherwise.}
+    \end{cases}
+  \]
+  The projection $\projn{C}$ is the network mapping each $\rr\in\Roles$ to
+  $\proj{C}{\rr}$.
+\end{definition}
+
+When $\rr$ is not involved in an action, the variable bound by the action
+disappears from $\rr$'s program along with the action.
+Lemma~\ref{lem:c1-local} shows that typing makes this safe.  The following
+facts are immediate from the definition.
+
+\begin{lemma}[Prefixes]\label{lem:c1-prefix}
+  For every action $A$, variable $x$ and role $\rr$:
+  \begin{enumerate}[label=(\roman*),nosep]
+  \item\label{it:c1-prefix-eps} $\pre{A}{x}{\rr}=\varepsilon$ if and only if $\rr\notin\roles{A}$.
+  \item\label{it:c1-prefix-bind} If $\pre{A}{x}{\rr}$ does not bind $x$, then $\rr\neq\loc{A}$.
+  \end{enumerate}
+\end{lemma}
+\begin{proof}
+  \ref{it:c1-prefix-eps} is read off the definition.  For
+  \ref{it:c1-prefix-bind}, the prefixes that do not bind $x$ are $\varepsilon$,
+  which occurs only when $\rr\notin\roles{A}\ni\loc{A}$, and the send at $\pp$
+  in a communication, where $\pp\neq\qq=\loc{A}$.
+\end{proof}
+
+\section{Metatheory}
+\label{sec:c1-meta}
+
+\subsection{Supporting lemmas}
+
+\begin{lemma}[Substitution]\label{lem:c1-subst}
+  If $\Gamma,x{:}\pp\vdash C$ and $\Gamma\vdash_\pp a$, then $\Gamma\vdash C[a/x]$.
+\end{lemma}
+\begin{proof}
+  By induction on $C$, renaming bound variables apart from $x$ and $\fv(a)$.
+  Every expression or atom $e$ in $C$ is checked as $\Gamma,x{:}\pp\vdash_\qq e$
+  for some $\qq$.  If $\qq=\pp$, then $\Gamma\vdash_\pp e[a/x]$ by the property of
+  substitution on free variables.  If $\qq\neq\pp$, then $x\notin\fv(e)$ and
+  $e[a/x]=e$.
+\end{proof}
+
+\begin{lemma}[Subject reduction]\label{lem:c1-sr}
+  If $\Gamma\vdash C$ and $C\lto{\ell}C'$, then $\Gamma\vdash C'$.
+\end{lemma}
+\begin{proof}
+  By induction on the step.  For \rn{Local}, $\Gamma,x{:}\pp\vdash C_0$ and
+  $\Gamma\vdash_\pp v$ since $v$ is closed, so Lemma~\ref{lem:c1-subst}
+  applies; \rn{Com} is the same with $\qq$ in place of $\pp$.  For \rn{Delay},
+  $\Gamma,x{:}\loc{A}\vdash C_0$, and the induction hypothesis applies.
+\end{proof}
+
+\begin{lemma}[Projection is local]\label{lem:c1-local}
+  If $\Gamma\vdash C$, then every free variable of $\proj{C}{\rr}$ is mapped to
+  $\rr$ by $\Gamma$.
+\end{lemma}
+\begin{proof}
+  By induction on $C$.  For $\cret{\pp.a}$ the projection is $\kw{ret}\;a$ at
+  $\pp$, and $\Gamma\vdash_\pp a$; elsewhere it is closed.  For
+  $\bind{x}{A}{C_0}$, the prefix $\pre{A}{x}{\rr}$ is nonempty only when
+  $\rr\in\roles{A}$, and then its free variables are those of the expression
+  or atom that $\rr$ evaluates or sends, which typing places at $\rr$.  By the
+  induction hypothesis, every free variable of $\proj{C_0}{\rr}$ is mapped to
+  $\rr$ by $\Gamma,x{:}\loc{A}$.  If the prefix binds $x$ we are done.
+  Otherwise $\rr\neq\loc{A}$ by Lemma~\ref{lem:c1-prefix}\ref{it:c1-prefix-bind},
+  so $x$ is not free in $\proj{C_0}{\rr}$.
+\end{proof}
+
+\begin{lemma}[Projection commutes with substitution]\label{lem:c1-psubst}
+  $\proj{C[a/x]}{\rr} = \proj{C}{\rr}[a/x]$.
+\end{lemma}
+\begin{proof}
+  By induction on $C$.  The shape of a projection depends only on the roles
+  of the actions, which substitution does not change, and
+  $\pre{A[a/x]}{y}{\rr} = \pre{A}{y}{\rr}[a/x]$ by inspection.  No typing is
+  needed.
+\end{proof}
+
+\begin{corollary}\label{cor:c1-psubst}
+  If $\Gamma,x{:}\pp\vdash C$ and $\rr\neq\pp$, then
+  $\proj{C[a/x]}{\rr}=\proj{C}{\rr}$.
+\end{corollary}
+\begin{proof}
+  By Lemma~\ref{lem:c1-local}, $x$ is not free in $\proj{C}{\rr}$; apply
+  Lemma~\ref{lem:c1-psubst}.
+\end{proof}
+
+\begin{lemma}[Choreographic frame]\label{lem:c1-cframe}
+  If $\Gamma\vdash C$, $C\lto{\ell}C'$ and $\rr\notin\roles{\ell}$, then
+  $\proj{C'}{\rr}=\proj{C}{\rr}$.
+\end{lemma}
+\begin{proof}
+  By induction on the step.
+
+  \case{\rn{Local}}
+  $C=\bind{x}{\pp.e}{C_0}$ and $C'=C_0[v/x]$, with $\rr\neq\pp$.  Then
+  $\proj{C}{\rr}=\proj{C_0}{\rr}$, which equals $\proj{C_0[v/x]}{\rr}$ by
+  Corollary~\ref{cor:c1-psubst}, since $x$ is held at $\pp\neq\rr$.
+
+  \case{\rn{Com}}
+  The same, with $\rr\notin\{\pp,\qq\}$ and $x$ held at $\qq\neq\rr$.
+
+  \case{\rn{Delay}}
+  $C=\bind{x}{A}{C_0}$ and $C'=\bind{x}{A}{C_0'}$.  The induction hypothesis
+  gives $\proj{C_0'}{\rr}=\proj{C_0}{\rr}$, and both projections put the same
+  prefix $\pre{A}{x}{\rr}$ in front.
+\end{proof}
+
+\begin{lemma}[Network frame]\label{lem:c1-nframe}
+  Suppose $N\lto{\ell}N'$.
+  \begin{enumerate}[label=(\roman*),nosep]
+  \item\label{it:c1-nframe-loc} $N'(\rr)=N(\rr)$ for every $\rr\notin\roles{\ell}$.
+  \item\label{it:c1-nframe-move} If $M$ agrees with $N$ on $\roles{\ell}$, then
+    $M\lto{\ell}M'$, where $M'$ agrees with $N'$ on $\roles{\ell}$ and with
+    $M$ elsewhere.
+  \end{enumerate}
+\end{lemma}
+\begin{proof}
+  By inspection of Figure~\ref{fig:c1-net}.  The premises of each rule
+  mention only the programs of the roles in $\roles{\ell}$, and the
+  conclusion updates only those.
+\end{proof}
+
+\begin{corollary}[Lifting]\label{cor:c1-lift}
+  Suppose $\projn{C_0}\lto{\ell}\projn{C_0'}$.  If
+  $\proj{C}{\rr}=\proj{C_0}{\rr}$ and $\proj{C'}{\rr}=\proj{C_0'}{\rr}$ for
+  every $\rr\in\roles{\ell}$, and $\proj{C'}{\rr}=\proj{C}{\rr}$ for every
+  $\rr\notin\roles{\ell}$, then $\projn{C}\lto{\ell}\projn{C'}$.
+\end{corollary}
+\begin{proof}
+  By Lemma~\ref{lem:c1-nframe}\ref{it:c1-nframe-move} with $M=\projn{C}$,
+  $\projn{C}\lto{\ell}M'$, where $M'$ agrees with $\projn{C_0'}$, and hence
+  with $\projn{C'}$, on $\roles{\ell}$, and agrees with $\projn{C}$, and
+  hence with $\projn{C'}$, elsewhere.
+\end{proof}
+
+\begin{lemma}[Network inversion]\label{lem:c1-inv}
+  Suppose $N\lto{\ell}N'$ and $\rr\in\roles{\ell}$.  Then $N(\rr)$ is not a
+  return, and:
+  \begin{enumerate}[label=(\alph*),nosep]
+  \item\label{it:c1-inv-local} if $N(\rr)=x\leftarrow e\,;\,P$, then the rule
+    is \rn{N-Local}, $\ell=\tauat{\rr}$, $e\Downarrow v$ and $N'=\upd{N}{\rr}{P[v/x]}$;
+  \item\label{it:c1-inv-send} if $N(\rr)=\nsend{\qq}{a}\,;\,P$, then the rule
+    is \rn{N-Com}, $a$ is a value $v$, $\ell=\com{\rr}{v}{\qq}$,
+    $N(\qq)=y\leftarrow\nrecv{\rr}\,;\,P'$ and
+    $N'=N[\rr\mapsto P,\ \qq\mapsto P'[v/y]]$;
+  \item\label{it:c1-inv-recv} if $N(\rr)=x\leftarrow\nrecv{\pp}\,;\,P$, then the
+    rule is \rn{N-Com}, $N(\pp)=\nsend{\rr}{v}\,;\,P'$ for some value $v$,
+    $\ell=\com{\pp}{v}{\rr}$ and $N'=N[\pp\mapsto P',\ \rr\mapsto P[v/x]]$.
+  \end{enumerate}
+\end{lemma}
+\begin{proof}
+  By inspection of Figure~\ref{fig:c1-net}.  Each role in $\roles{\ell}$
+  appears in the rule's premises with a program of one of the three prefixed
+  shapes.  Each shape occurs in exactly one position of exactly one rule, so
+  the shape of $N(\rr)$ determines the rule and $\rr$'s part in it.
+\end{proof}
+
+\subsection{Endpoint projection is lockstep}
+
+\begin{theorem}[EPP is lockstep]\label{thm:c1-epp}
+  Suppose $\Gamma\vdash C$.
+  \begin{enumerate}[label=(\arabic*),nosep]
+  \item\label{it:c1-complete} \emph{Completeness.} If $C\lto{\ell}C'$, then $\projn{C}\lto{\ell}\projn{C'}$.
+  \item\label{it:c1-sound} \emph{Soundness.} If $\projn{C}\lto{\ell}N$, then
+    $C\lto{\ell}C'$ for some $C'$ with $N=\projn{C'}$.
+  \end{enumerate}
+\end{theorem}
+
+\begin{proof}[Proof of completeness]
+  By induction on the step.
+
+  \case{\rn{Local}}
+  $C=\bind{x}{\pp.e}{C_0}$, $e\Downarrow v$ and $C'=C_0[v/x]$.  At $\pp$ the
+  projection is $x\leftarrow e\,;\,\proj{C_0}{\pp}$, so \rn{N-Local} gives
+  $\projn{C}\lto{\tauat\pp}\upd{\projn{C}}{\pp}{\proj{C_0}{\pp}[v/x]}$.  At
+  $\pp$, $\proj{C_0}{\pp}[v/x]=\proj{C_0[v/x]}{\pp}$ by
+  Lemma~\ref{lem:c1-psubst}.  At $\rr\neq\pp$,
+  $\proj{C}{\rr}=\proj{C_0}{\rr}=\proj{C_0[v/x]}{\rr}$ by
+  Corollary~\ref{cor:c1-psubst}.
+
+  \case{\rn{Com}}
+  $C=\bind{x}{\com{\pp}{v}{\qq}}{C_0}$ and $C'=C_0[v/x]$.  The projection is
+  $\nsend{\qq}{v}\,;\,\proj{C_0}{\pp}$ at $\pp$ and
+  $x\leftarrow\nrecv{\pp}\,;\,\proj{C_0}{\qq}$ at $\qq$, so \rn{N-Com} fires.
+  The target is $\proj{C_0}{\pp}$ at $\pp$, which equals
+  $\proj{C_0[v/x]}{\pp}$ by Corollary~\ref{cor:c1-psubst} since $x$ is held
+  at $\qq\neq\pp$; it is $\proj{C_0}{\qq}[v/x]=\proj{C_0[v/x]}{\qq}$ at $\qq$
+  by Lemma~\ref{lem:c1-psubst}; and other roles are unchanged on both sides,
+  by Corollary~\ref{cor:c1-psubst}.
+
+  \case{\rn{Delay}}
+  $C=\bind{x}{A}{C_0}$, $C'=\bind{x}{A}{C_0'}$, $C_0\lto{\ell}C_0'$ and
+  $\roles{\ell}\cap\roles{A}=\emptyset$.  Since $\Gamma,x{:}\loc{A}\vdash C_0$,
+  the induction hypothesis gives $\projn{C_0}\lto{\ell}\projn{C_0'}$.  We
+  apply Corollary~\ref{cor:c1-lift}.  For $\rr\in\roles{\ell}$ we have
+  $\rr\notin\roles{A}$, so the prefix is empty, $\proj{C}{\rr}=\proj{C_0}{\rr}$
+  and $\proj{C'}{\rr}=\proj{C_0'}{\rr}$.  For $\rr\notin\roles{\ell}$,
+  $\proj{C'}{\rr}=\proj{C}{\rr}$ by Lemma~\ref{lem:c1-cframe}.
+\end{proof}
+
+\begin{proof}[Proof of soundness]
+  By induction on $C$.  Write $N_C$ for $\projn{C}$ and $N'$ for the target
+  of the network step.  If $C$ is a return, every role's projection is a
+  return, and by Lemma~\ref{lem:c1-inv} there is no step.  Otherwise
+  $C=\bind{x}{A}{C_0}$, and we distinguish whether the step involves a role
+  of $A$.
+
+  \subcase{$\roles{\ell}\cap\roles{A}=\emptyset$}
+  For $\rr\in\roles{\ell}$ the prefix is empty, so $N_C$ agrees with
+  $\projn{C_0}$ on $\roles{\ell}$.  By
+  Lemma~\ref{lem:c1-nframe}\ref{it:c1-nframe-move},
+  $\projn{C_0}\lto{\ell}N''$, where $N''$ agrees with $N'$ on $\roles{\ell}$ and
+  with $\projn{C_0}$ elsewhere.  The induction hypothesis gives
+  $C_0\lto{\ell}C_0'$ with $\projn{C_0'}=N''$, and \rn{Delay} gives
+  $C\lto{\ell}C'=\bind{x}{A}{C_0'}$.  For $\rr\in\roles{\ell}$,
+  $\proj{C'}{\rr}=\proj{C_0'}{\rr}=N''(\rr)=N'(\rr)$.  For
+  $\rr\notin\roles{\ell}$, $N'(\rr)=N_C(\rr)$ by
+  Lemma~\ref{lem:c1-nframe}\ref{it:c1-nframe-loc}, and
+  $N_C(\rr)=\pre{A}{x}{\rr}\,\proj{C_0}{\rr}=\pre{A}{x}{\rr}\,\proj{C_0'}{\rr}=\proj{C'}{\rr}$
+  by Lemma~\ref{lem:c1-cframe}.
+
+  \subcase{some $\rr\in\roles{\ell}\cap\roles{A}$}
+  The program $N_C(\rr)$ begins with $\rr$'s part of $A$, and
+  Lemma~\ref{lem:c1-inv} shows that the step is $A$ itself.
+  \begin{itemize}
+  \item If $A=\pp.e$, then $\rr=\pp$ and $N_C(\pp)=x\leftarrow e\,;\,\proj{C_0}{\pp}$.
+    By Lemma~\ref{lem:c1-inv}\ref{it:c1-inv-local}, $\ell=\tauat{\pp}$,
+    $e\Downarrow v$ and $N'=\upd{N_C}{\pp}{\proj{C_0}{\pp}[v/x]}$.  Rule
+    \rn{Local} gives $C\lto{\tauat\pp}C_0[v/x]$ with the same $v$, and
+    $\projn{C_0[v/x]}=N'$ as in the completeness proof.
+  \item If $A=\com{\pp}{a}{\qq}$, then $N_C(\pp)=\nsend{\qq}{a}\,;\,\proj{C_0}{\pp}$
+    and $N_C(\qq)=x\leftarrow\nrecv{\pp}\,;\,\proj{C_0}{\qq}$.  If $\rr=\pp$,
+    Lemma~\ref{lem:c1-inv}\ref{it:c1-inv-send} applies; if $\rr=\qq$,
+    Lemma~\ref{lem:c1-inv}\ref{it:c1-inv-recv} applies, and the sender it
+    finds is $\pp$ with program $N_C(\pp)$.  Either way $a$ is a value $v$,
+    $\ell=\com{\pp}{v}{\qq}$, and
+    $N'=N_C[\pp\mapsto\proj{C_0}{\pp},\ \qq\mapsto\proj{C_0}{\qq}[v/x]]$.  Rule
+    \rn{Com} gives $C\lto{\ell}C_0[v/x]$, and $\projn{C_0[v/x]}=N'$ as in the
+    completeness proof.\qedhere
+  \end{itemize}
+\end{proof}
+
+\begin{corollary}[Bisimulation]\label{cor:c1-bisim}
+  The relation $\{(C,\projn{C})\mid\Gamma\vdash C\}$ is a strong bisimulation
+  with identical labels between choreographies and networks.
+\end{corollary}
+\begin{proof}
+  Theorem~\ref{thm:c1-epp}, with Lemma~\ref{lem:c1-sr} to keep the
+  choreography well-typed.
+\end{proof}
+
+In particular, every network reachable from $\projn{C}$ is $\projn{C'}$ for
+some $C'$ reachable from $C$.
+
+\subsection{Deadlock freedom}
+\label{sec:c1-df}
+
+\begin{theorem}[Deadlock freedom]\label{thm:c1-df}
+  Assume (L2) and $\emptyset\vdash C$.  Every network reachable from
+  $\projn{C}$ is either terminated or can step.
+\end{theorem}
+\begin{proof}
+  By Corollary~\ref{cor:c1-bisim}, every reachable network is $\projn{C'}$ for
+  some $C'$ with $\emptyset\vdash C'$.  If $C'$ is a return, $\projn{C'}$ is
+  terminated.  Otherwise its head action is closed: \rn{Local} fires by (L2),
+  or \rn{Com} fires because a closed atom is a value.  By
+  Theorem~\ref{thm:c1-epp}\ref{it:c1-complete}, $\projn{C'}$ steps.
+\end{proof}
+
+\subsection{Agreement with the sequential semantics}
+\label{sec:c1-confluence}
+
+We prove confluence on networks rather than on choreographies, and transfer it
+along the bisimulation.  The network proof uses only the fact that each local
+program has a single head, so it holds verbatim in every later chapter,
+including those where the corresponding statement about choreographies fails
+syntactically (Remark~\ref{rem:c3-diamond}).
+
+\begin{lemma}[Network determinacy]\label{lem:c1-det}
+  Assume (L1).  If $N\lto{\ell}N_1$ and $N\lto{\ell}N_2$, then $N_1=N_2$.
+\end{lemma}
+\begin{proof}
+  The label determines the roles involved.  The heads of their programs
+  determine the rule and the target, using (L1) for \rn{N-Local}.
+\end{proof}
+
+\begin{lemma}[Network diamond]\label{lem:c1-diamond}
+  If $N\lto{\ell_1}N_1$, $N\lto{\ell_2}N_2$ and $\ell_1\neq\ell_2$, then
+  $\roles{\ell_1}\cap\roles{\ell_2}=\emptyset$, and $N_1\lto{\ell_2}N_3$ and
+  $N_2\lto{\ell_1}N_3$ for some $N_3$.
+\end{lemma}
+\begin{proof}
+  Suppose $\rr$ is in both $\roles{\ell_1}$ and $\roles{\ell_2}$.  By
+  Lemma~\ref{lem:c1-inv}, the head of $N(\rr)$ determines the label of any
+  step involving $\rr$: $\tauat{\rr}$ for a local computation,
+  $\com{\rr}{v}{\qq}$ for a send of $v$, and $\com{\pp}{v}{\rr}$ for a receive
+  from $\pp$, where $v$ is read off $N(\pp)$.  So $\ell_1=\ell_2$, a
+  contradiction.  Since $N_1$ agrees with $N$ outside $\roles{\ell_1}$
+  (Lemma~\ref{lem:c1-nframe}\ref{it:c1-nframe-loc}), it agrees with $N$ on
+  $\roles{\ell_2}$, so Lemma~\ref{lem:c1-nframe}\ref{it:c1-nframe-move} gives
+  $N_1\lto{\ell_2}N_3$, where $N_3$ is $N_2$ on $\roles{\ell_2}$ and $N_1$
+  elsewhere.  Symmetrically $N_2\lto{\ell_1}N_3'$, where $N_3'$ is $N_1$ on
+  $\roles{\ell_1}$ and $N_2$ elsewhere.  Both $N_3$ and $N_3'$ are $N_1$ on
+  $\roles{\ell_1}$, $N_2$ on $\roles{\ell_2}$, and $N$ elsewhere, so
+  $N_3=N_3'$.
+\end{proof}
+
+For a run $\sigma$ and a role $\rr$, write $\sigma|_\rr$ for the sequence of
+labels in $\sigma$ that involve $\rr$.  A run is \emph{maximal} if it is
+infinite or ends in a network with no step.
+
+\begin{lemma}[Network confluence]\label{lem:c1-conf}
+  Assume (L1).  If $N$ has a maximal run of finite length $n$, then every
+  maximal run from $N$ has length $n$, ends in the same network, and has the
+  same $\sigma|_\rr$ for every $\rr$.
+\end{lemma}
+\begin{proof}
+  By induction on $n$.  If $n=0$, $N$ has no step.  Otherwise let
+  $N\lto{\ell_1}N_1$ begin a maximal run $\sigma_1$ of length $n$, and let
+  $N\lto{\ell_2}N_2$ begin any maximal run $\sigma_2$.  If $\ell_1=\ell_2$,
+  then $N_1=N_2$ by Lemma~\ref{lem:c1-det}, and the induction hypothesis for
+  $N_1$ applies to both tails.  Otherwise Lemma~\ref{lem:c1-diamond} gives
+  $N_3$ with $N_1\lto{\ell_2}N_3$ and $N_2\lto{\ell_1}N_3$, and disjoint
+  $\roles{\ell_1}$ and $\roles{\ell_2}$.  By the induction hypothesis for
+  $N_1$, every maximal run from $N_1$ has length $n-1$ and the same final
+  network and per-role sequences as the tail of $\sigma_1$.  Since every run
+  from $N_3$ extends to a run from $N_1$, $N_3$ has a maximal run $\tau$, and
+  $\ell_2\tau$ is a maximal run from $N_1$, so $\tau$ has length $n-2$.
+  Then $\ell_1\tau$ is a maximal run from $N_2$ of length $n-1$, and the
+  induction hypothesis for $N_2$ shows that the tail of $\sigma_2$ has the
+  same length, final network and per-role sequences as $\ell_1\tau$.  Finally,
+  for every $\rr$, $(\ell_1\ell_2\tau)|_\rr=(\ell_2\ell_1\tau)|_\rr$ because at
+  most one of $\ell_1$ and $\ell_2$ involves $\rr$.
+\end{proof}
+
+\begin{theorem}[Agreement with the sequential semantics]\label{thm:c1-agree}
+  Assume (L1), (L2) and $\emptyset\vdash C$, and let $n$ be the number of
+  actions in $C$.
+  \begin{enumerate}[label=(\arabic*),nosep]
+  \item Every maximal run of $\lto{}$ from $C$ has exactly $n$ steps.
+  \item All maximal runs end in the same return $\cret{\pp.v}$, which is the
+    result of the $\seqto$ run.
+  \item For each role $\rr$, every maximal run shows the same sequence of
+    labels involving $\rr$.
+  \end{enumerate}
+\end{theorem}
+\begin{proof}
+  (1) Each step removes exactly one action, and by the progress argument in
+  the proof of Theorem~\ref{thm:c1-df} a run stops only at a return.  (2)
+  and (3) By completeness, every maximal run of $C$ projects, state by state
+  and with the same labels, to a run of $\projn{C}$, and that run is maximal
+  by soundness.  These network runs are finite by (1), so
+  Lemma~\ref{lem:c1-conf} shows that they all end in the same network and
+  have the same per-role label sequences.  The final
+  choreographies are returns, and $\projn{\cret{\pp.v}}$ determines $\pp$ (the
+  only role not returning $\bot$) and $v$.  The $\seqto$ run is one of the
+  maximal runs.
+\end{proof}
+
+\begin{corollary}
+  Every maximal run of $\projn{C}$ ends in $\projn{\cret{\pp.v}}$, where $v$
+  is the sequential result, and each role performs the same interactions, in
+  the same order, as in the sequential run.
+\end{corollary}
+
+\section{Worked example}
+\label{sec:c1-example}
+
+Two independent exchanges run concurrently.  In the choreographic semantics,
+$\rr$ can act first even though its actions come later in the program.
+\[
+\begin{array}{r@{\;\;}l}
+  C \;=\; & \bind{x}{\pp.(2+3)}{}\\
+          & \bind{y}{\com{\pp}{x}{\qq}}{}\\
+          & \bind{z}{\rr.10}{}\\
+          & \bind{w}{\com{\rr}{z}{\sr}}{}\\
+          & \bind{u}{\qq.(y\cdot 2)}{}\\
+          & \cret{\qq.u}
+\end{array}
+\]
+Its projection is
+\[
+\begin{array}{r@{\;\;}l}
+  \pp: & x\leftarrow 2+3\,;\;\nsend{\qq}{x}\,;\;\kw{ret}\;\bot\\
+  \qq: & y\leftarrow\nrecv{\pp}\,;\;u\leftarrow y\cdot 2\,;\;\kw{ret}\;u\\
+  \rr: & z\leftarrow 10\,;\;\nsend{\sr}{z}\,;\;\kw{ret}\;\bot\\
+  \sr: & w\leftarrow\nrecv{\rr}\,;\;\kw{ret}\;\bot
+\end{array}
+\]
+From $C$, two steps are enabled: $\tauat{\pp}$ at the head, and $\tauat{\rr}$
+by \rn{Delay} past the two actions involving $\pp$ and $\qq$.  Firing
+$\tauat{\rr}$ gives
+\[
+  C' \;=\; \bind{x}{\pp.(2+3)}{\bind{y}{\com{\pp}{x}{\qq}}{\bind{w}{\com{\rr}{10}{\sr}}{\bind{u}{\qq.(y\cdot 2)}{\cret{\qq.u}}}}}.
+\]
+In the network, $\rr$'s program becomes $\nsend{\sr}{10}\,;\;\kw{ret}\;\bot$,
+which is $\proj{C'}{\rr}$.  Every maximal run takes five steps, and
+each ends with $\qq$ holding $\kw{ret}\;10$ and every other role holding
+$\kw{ret}\;\bot$.
+
+%======================================================================
+\chapter{Conditionals by Multicast}
+\label{ch:cond}
+%======================================================================
+
+This chapter adds a conditional.  Instead of the selections used by the
+language CC of Cruz-Filipe and Montesi~\cite{cc}, knowledge of choice is
+propagated by multicast: the role $\pp$ that holds the guard sends its value
+to every other role occurring in either branch, and in the same step every
+participant, $\pp$ included, continues with the selected branch.  Because the
+language is monadic, the conditional is an action like any other: it returns
+a value, which the continuation binds.
+\[
+  \bind{y}{\cif{\pp}{b}{C_1}{C_2}}{C}
+\]
+Both branches share the continuation $C$, so roles that take part only in
+$C$ are not involved in the conditional.
+
+\section{Design choices}
+\label{sec:c2-choices}
+
+\begin{choice}[Knowledge of choice by multicast]\label{cho:c2-multicast}
+  The guard holder $\pp$ sends the guard's value to the \emph{receivers}: every
+  role other than $\pp$ that occurs in either branch, whether or not its
+  behaviour differs between them.
+
+  \emph{Proof saved.}  There are no selections and no merging, and
+  projection is a total function.  Every participant learns the choice in the
+  step that resolves it, so the projection never contains code for a branch
+  that has been ruled out, and no pruning relation is needed.  The cost is
+  that a role whose behaviour is the same in both branches still receives a
+  message.
+\end{choice}
+
+\begin{choice}[The sender branches in the same step]\label{cho:c2-sendbranch}
+  At the network level, the guard holder executes a \emph{send-and-branch}
+  and each receiver a \emph{receive-and-branch}.  Rule \rn{N-Cast} is a
+  single synchronous one-to-many rendezvous in which all participants select
+  their branch together.
+
+  \emph{Proof saved.}  There is no intermediate network state in which the
+  guard has been announced to some participants but not to others, or in
+  which the sender has not yet committed.  The choreography therefore needs
+  no runtime term for a partially executed conditional, and a conditional is
+  one step at both levels.
+\end{choice}
+
+\begin{choice}[The conditional binds its result]\label{cho:c2-bind}
+  The conditional is an action, used as $\bind{y}{\cif{\pp}{a}{C_1}{C_2}}{C}$,
+  rather than a term in tail position.  When it fires, the selected branch is
+  spliced in front of the continuation with the derived bind,
+  $\mbind{C_v}{y}{C}$, which is again in normal form.
+
+  \emph{Proof saved.}  The alternative is the free monad's own normal form
+  for a branching operation, which pushes the continuation into both branches.
+  That would make every role of $C$ a receiver, add a message for each of
+  them, and block them until the guard is known.  With a shared
+  continuation, roles that take part only in $C$ are not involved in the
+  conditional, and the existing \rn{Delay} rule lets them run past it
+  unchanged.  The only new fact the proofs need is that projection commutes
+  with bind (Lemma~\ref{lem:c2-pbind}).
+\end{choice}
+
+\begin{choice}[The guard is an atom, and the label carries its value]\label{cho:c2-guard}
+  Following Choice~\ref{cho:c1-values}, the guard is an atom, not an
+  expression, and the conditional fires only when the guard is a value.  The
+  label $\castlbl{\pp}{v}{Q}$ records the value and the receivers.
+
+  \emph{Proof saved.}  \rn{Cast} has no evaluation premise.  A label
+  determines the step it labels, so network determinacy and the diamond
+  property (\S\ref{sec:c1-confluence}) carry over with one extra case each.
+\end{choice}
+
+\begin{choice}[The result holder is a participant]\label{cho:c2-ret}
+  A return $\cret{\sr.a}$ counts $\sr$ among its roles.
+
+  \emph{Proof saved.}  The role $\sr$ that will hold the conditional's result
+  occurs in both branches, so it is $\pp$ or a receiver, and it learns which
+  branch was taken.  A role outside $\roles{C}$ projects to
+  $\kw{ret}\;\bot$ (Lemma~\ref{lem:c2-erase}), so the single network equation
+  $\mbind{(\kw{ret}\;\bot)}{x}{P}=P$ is enough.
+\end{choice}
+
+\begin{choice}[Nothing steps inside a branch]\label{cho:c2-nobranch}
+  There is no rule for stepping inside a branch before the guard is
+  announced.  CC has such a rule, which delays a step past a
+  conditional when both branches can perform it, which is the situation
+  that merging handles.
+
+  \emph{Proof saved.}  Every receiver is waiting at its receive-and-branch
+  and cannot act in a branch before the multicast, and any other role does
+  not occur in either branch, so the network has no such steps to match.
+  Branches therefore remain source terms until they are selected, and bind is
+  only ever applied with a source term on its left.  This is used in
+  Chapter~\ref{ch:fun}.
+\end{choice}
+
+\section{Syntax and typing}
+\label{sec:c2-syntax}
+
+\begin{definition}[Choreographies with conditionals]\label{def:c2-syntax}
+  \[
+  \begin{array}{r@{\;\;}c@{\;\;}l@{\qquad}l}
+    A & ::= & \pp.e \;\mid\; \com{\pp}{a}{\qq} & \text{as in Chapter~\ref{ch:core}}\\
+      & \mid & \cif{\pp}{a}{C_1}{C_2} & \text{conditional on a guard held at } \pp\\[1ex]
+    C & ::= & \cret{\pp.a} \;\mid\; \bind{x}{A}{C} & \text{as in Chapter~\ref{ch:core}}
+  \end{array}
+  \]
+  We write $C_\ttrue=C_1$ and $C_\ffalse=C_2$, so that $C_v$ is the branch
+  selected by the boolean $v$.  Derived bind (Definition~\ref{def:c1-bind}) is
+  unchanged; it walks only the spine and never enters a branch.
+\end{definition}
+
+\begin{definition}[Roles and receivers]\label{def:c2-roles}
+  \[
+  \begin{array}{r@{\;\;=\;\;}l}
+    \roles{\cret{\pp.a}} & \{\pp\}\\
+    \roles{\bind{x}{A}{C}} & \roles{A}\cup\roles{C}\\
+    \roles{\cif{\pp}{a}{C_1}{C_2}} & \{\pp\}\cup\roles{C_1}\cup\roles{C_2}\\
+    \rcv{\cif{\pp}{a}{C_1}{C_2}} & (\roles{C_1}\cup\roles{C_2})\setminus\{\pp\}
+  \end{array}
+  \]
+  with $\roles{A}$ for local computation and communication as in
+  Definition~\ref{def:c1-syntax}.
+\end{definition}
+
+The receivers may be empty, in which case the conditional is local to $\pp$.
+Substitution does not change roles or receivers:
+$\roles{C[a/x]}=\roles{C}$ and $\rcv{A[a/x]}=\rcv{A}$.
+
+\paragraph{Typing.}
+Since a conditional binds the result of a sub-choreography, typing must now
+say where a choreography's result is held.  The judgements are
+$\Gamma\vdash A:\sr$ and $\Gamma\vdash C:\sr$, meaning that the result is held
+at $\sr$:
+\begin{mathpar}
+  \inferrule{\Gamma\vdash_\pp a}{\Gamma\vdash\cret{\pp.a}:\pp}
+  \and
+  \inferrule{\Gamma\vdash A:\sr' \\ \Gamma,x{:}\sr'\vdash C:\sr}{\Gamma\vdash\bind{x}{A}{C}:\sr}
+  \\
+  \inferrule{\Gamma\vdash_\pp e}{\Gamma\vdash\pp.e:\pp}
+  \and
+  \inferrule{\pp\neq\qq \\ \Gamma\vdash_\pp a}{\Gamma\vdash\com{\pp}{a}{\qq}:\qq}
+  \and
+  \inferrule{\Gamma\vdash_\pp a \\ \Gamma\vdash C_1:\sr \\ \Gamma\vdash C_2:\sr}
+            {\Gamma\vdash\cif{\pp}{a}{C_1}{C_2}:\sr}
+\end{mathpar}
+The result location of a well-typed action or choreography is unique, and we
+continue to write $\loc{A}$ for it.  For local computation and communication
+it is as in Chapter~\ref{ch:core}.  A program is a choreography $C$ with
+$\emptyset\vdash C:\sr$ for some $\sr$.
+
+\begin{lemma}[Results are held by participants]\label{lem:c2-locroles}
+  If $\Gamma\vdash C:\sr$ then $\sr\in\roles{C}$, and if $\Gamma\vdash A:\sr$
+  then $\sr\in\roles{A}$.
+\end{lemma}
+\begin{proof}
+  The first claim is by induction on $C$: a return $\cret{\sr.a}$ has role
+  $\sr$, and a bind has the result location of its continuation, whose roles
+  it includes.  The second follows: local computation and communication by
+  definition, and a conditional because its branches have result location
+  $\sr$.
+\end{proof}
+
+From Chapter~\ref{ch:fun} on, $\roles{\cdot}$ is defined on source
+choreographies only, and the first claim is stated for them; the second
+claim then also covers calls (\S\ref{sec:c3-syntax}).
+
+One further assumption on the local language is used, for deadlock freedom
+only.
+\begin{description}[nosep,font=\normalfont\itshape]
+\item[(L3) Boolean guards.] Every value that occurs as the guard of a
+  conditional in a program, or that is substituted for its guard during
+  execution, is $\ttrue$ or $\ffalse$.
+\end{description}
+Any standard type system for the local language enforces (L3).  Without it,
+a conditional with a non-boolean guard is stuck in both semantics, so the
+bisimulation is unaffected.
+
+\section{Choreographic semantics}
+\label{sec:c2-sem}
+
+Labels gain a multicast:
+\[
+  \ell \;::=\; \tauat{\pp} \;\mid\; \com{\pp}{v}{\qq} \;\mid\; \castlbl{\pp}{v}{Q}
+  \qquad
+  \roles{\castlbl{\pp}{v}{Q}} = \{\pp\}\cup Q.
+\]
+The semantics consists of the rules of Figure~\ref{fig:c1-sem} and the rule
+\begin{mathpar}
+  \inferrule*[right=\rn{Cast}]
+    {v\in\{\ttrue,\ffalse\} \\ A=\cif{\pp}{v}{C_\ttrue}{C_\ffalse} \\ Q=\rcv{A}}
+    {\bind{x}{A}{C} \lto{\castlbl{\pp}{v}{Q}} \mbind{C_v}{x}{C}}
+\end{mathpar}
+The sequential semantics $\seqto$ consists of \rn{Local}, \rn{Com} and
+\rn{Cast}.
+
+\rn{Cast} announces the guard to the receivers and continues with the selected
+branch followed by the shared continuation.  \rn{Delay} is unchanged: since
+$\roles{A}$ for a conditional includes the roles of both branches, a step of
+the continuation may be taken before the conditional exactly when it involves
+none of the conditional's participants.  Nothing steps inside a branch
+(Choice~\ref{cho:c2-nobranch}).
+
+\section{Networks}
+\label{sec:c2-net}
+
+\begin{definition}[Networks with branching]\label{def:c2-net}
+  Prefixes gain a send-and-branch and a receive-and-branch:
+  \[
+  \begin{array}{r@{\;\;}c@{\;\;}l@{\qquad}l}
+    \pi & ::= & \cdots & \text{as in Definition~\ref{def:c1-net}}\\
+        & \mid & x\leftarrow\sendbr{Q}{a}{P_1}{P_2}\,; & \text{multicast $a$ to $Q$ and branch on it}\\
+        & \mid & x\leftarrow\recvbr{\pp}{P_1}{P_2}\,; & \text{receive a boolean from $\pp$ and branch on it}
+  \end{array}
+  \]
+  Network bind $\mbind{P_1}{x}{P_2}$ is defined by
+  \[
+  \mbind{(\kw{ret}\;a)}{x}{P} = P[a/x]
+  \qquad
+  \mbind{(\kw{ret}\;\bot)}{x}{P} = P
+  \qquad
+  \mbind{(\pi\,P_1)}{x}{P_2} = \pi\,(\mbind{P_1}{x}{P_2})
+  \]
+  where, in the last equation, the variable bound by $\pi$ is renamed apart
+  from $\fv(P_2)\cup\{x\}$.
+\end{definition}
+
+The network semantics consists of the rules of Figure~\ref{fig:c1-net} and
+\begin{mathpar}
+  \inferrule*[right=\rn{N-Cast}]
+    {N(\pp) = x\leftarrow\sendbr{Q}{v}{P_\ttrue}{P_\ffalse}\,;\,P \\
+     v\in\{\ttrue,\ffalse\} \\\\
+     N(\qq) = x_\qq\leftarrow\recvbr{\pp}{P^\qq_\ttrue}{P^\qq_\ffalse}\,;\,P^\qq \text{ for every } \qq\in Q}
+    {N \lto{\castlbl{\pp}{v}{Q}}
+     N[\pp\mapsto\mbind{P_v}{x}{P}][\qq\mapsto\mbind{P^\qq_v}{x_\qq}{P^\qq}]_{\qq\in Q}}
+\end{mathpar}
+When $Q=\emptyset$ the rule is a local conditional at $\pp$, so the network
+language needs no separate local branching construct.  The sender and every
+receiver bind the branch's result to their own copy of the variable, and a
+participant whose branch returns $\bot$ goes straight on to its
+continuation.
+
+\section{Endpoint projection}
+\label{sec:c2-epp}
+
+\begin{definition}[Projection of a conditional]\label{def:c2-epp}
+  Projection is as in Definition~\ref{def:c1-epp}, with the prefix for a
+  conditional $A=\cif{\pp}{a}{C_1}{C_2}$ with receivers $Q=\rcv{A}$ given by
+  \[
+  \pre{A}{x}{\rr} =
+    \begin{cases}
+      x\leftarrow\sendbr{Q}{a}{\proj{C_1}{\pp}}{\proj{C_2}{\pp}}\,; & \rr=\pp\\
+      x\leftarrow\recvbr{\pp}{\proj{C_1}{\rr}}{\proj{C_2}{\rr}}\,; & \rr\in Q\\
+      \varepsilon & \text{otherwise.}
+    \end{cases}
+  \]
+\end{definition}
+
+A role that is neither $\pp$ nor a receiver does not occur in either branch,
+and the conditional is erased from its program, as any other action would be
+(Choice~\ref{cho:c1-erase}).  This differs from tail-position conditionals,
+where such a role would be given a terminated program.  A receiver that does
+not occur in one of the branches gets $\kw{ret}\;\bot$ there
+(Lemma~\ref{lem:c2-erase}), and after the multicast it continues with its
+own projection of the continuation.
+
+Lemma~\ref{lem:c1-prefix} still holds.  Part \ref{it:c1-prefix-eps} is
+immediate, and for part \ref{it:c1-prefix-bind} the conditional's prefixes
+bind $x$, while its empty prefix occurs only outside $\roles{A}$, which
+contains $\loc{A}$ by Lemma~\ref{lem:c2-locroles}.
+
+\section{Correctness}
+\label{sec:c2-correct}
+
+All lemmas of \S\ref{sec:c1-meta} hold for the extended language, with
+$\Gamma\vdash C$ replaced by $\Gamma\vdash C:\sr$ and $\loc{A}$ given by
+typing.  Their proofs are by the same inductions, and we give only the new
+cases, after three new lemmas.
+
+\begin{lemma}[Erasure]\label{lem:c2-erase}
+  If $\rr\notin\roles{C}$, then $\proj{C}{\rr}=\kw{ret}\;\bot$.
+\end{lemma}
+\begin{proof}
+  By induction on $C$.  For $\cret{\pp.a}$, $\rr\neq\pp$.  For
+  $\bind{x}{A}{C_0}$, the prefix is empty by
+  Lemma~\ref{lem:c1-prefix}\ref{it:c1-prefix-eps}, and the induction
+  hypothesis applies to $C_0$.
+\end{proof}
+
+\begin{lemma}[Typing of bind]\label{lem:c2-tbind}
+  If $\Gamma\vdash C_1:\sr'$ and $\Gamma,x{:}\sr'\vdash C_2:\sr$, then
+  $\Gamma\vdash\mbind{C_1}{x}{C_2}:\sr$.
+\end{lemma}
+\begin{proof}
+  By induction on $C_1$.  The return case is Lemma~\ref{lem:c1-subst}, and the
+  bind case follows from the induction hypothesis after weakening $C_2$ with
+  the fresh bound variable.
+\end{proof}
+
+\begin{lemma}[Projection commutes with bind]\label{lem:c2-pbind}
+  If $\Gamma\vdash C_1:\sr'$ and $\Gamma,x{:}\sr'\vdash C_2:\sr$, then for
+  every role $\rr$,
+  \[
+    \proj{\mbind{C_1}{x}{C_2}}{\rr} = \mbind{\proj{C_1}{\rr}}{x}{\proj{C_2}{\rr}}.
+  \]
+\end{lemma}
+\begin{proof}
+  By induction on $C_1$.
+
+  \case{$C_1=\cret{\sr'.a}$}
+  The left side is $\proj{C_2[a/x]}{\rr}=\proj{C_2}{\rr}[a/x]$, by
+  Lemma~\ref{lem:c1-psubst}.  If $\rr=\sr'$, the right side is
+  $\mbind{(\kw{ret}\;a)}{x}{\proj{C_2}{\rr}}=\proj{C_2}{\rr}[a/x]$.  If
+  $\rr\neq\sr'$, the right side is
+  $\mbind{(\kw{ret}\;\bot)}{x}{\proj{C_2}{\rr}}=\proj{C_2}{\rr}$, and $x$ is not
+  free in $\proj{C_2}{\rr}$ by Lemma~\ref{lem:c1-local}, since $x$ is held at
+  $\sr'\neq\rr$.  So both sides are $\proj{C_2}{\rr}$.
+
+  \case{$C_1=\bind{y}{A}{C_1'}$}
+  The left side is
+  $\pre{A}{y}{\rr}\,\proj{\mbind{C_1'}{x}{C_2}}{\rr}$, which by the induction
+  hypothesis is
+  $\pre{A}{y}{\rr}\,(\mbind{\proj{C_1'}{\rr}}{x}{\proj{C_2}{\rr}})$.  By the
+  definition of network bind, this is
+  $\mbind{(\pre{A}{y}{\rr}\,\proj{C_1'}{\rr})}{x}{\proj{C_2}{\rr}}$, the right
+  side.  The bound variable $y$ is fresh for $C_2$ on both sides.
+\end{proof}
+
+The ret case is the only one that needs typing.  A role that does not hold
+the result continues directly, by the equation
+$\mbind{(\kw{ret}\;\bot)}{x}{P}=P$ of Choice~\ref{cho:c2-ret}, because typing
+guarantees that it never mentions the result.
+
+\paragraph{New cases of the supporting lemmas.}
+\begin{itemize}
+\item \emph{Substitution} (Lemma~\ref{lem:c1-subst}): the guard is checked at
+  $\pp$ like any atom, and the branches by the induction hypothesis.
+\item \emph{Subject reduction} (Lemma~\ref{lem:c1-sr}), case \rn{Cast}: from
+  $\Gamma\vdash C_v:\sr'$ and $\Gamma,x{:}\sr'\vdash C:\sr$,
+  Lemma~\ref{lem:c2-tbind} gives $\Gamma\vdash\mbind{C_v}{x}{C}:\sr$.
+\item \emph{Projection is local} (Lemma~\ref{lem:c1-local}): at $\pp$ the
+  prefix mentions the guard, held at $\pp$, and $\proj{C_i}{\pp}$, whose free
+  variables are held at $\pp$ by the induction hypothesis; at a receiver
+  $\rr$ it mentions only $\proj{C_i}{\rr}$.  The bound variable is handled by
+  Lemma~\ref{lem:c1-prefix}\ref{it:c1-prefix-bind} as before.
+\item \emph{Projection commutes with substitution} (Lemma~\ref{lem:c1-psubst}):
+  substitution does not change $\rcv{A}$, so the prefix of $A[a/x]$ is the
+  prefix of $A$ with $a$ substituted.
+\item \emph{Choreographic frame} (Lemma~\ref{lem:c1-cframe}), case \rn{Cast}:
+  let $C=\bind{x}{A}{C_0}$ and $\rr\notin\{\pp\}\cup Q=\roles{A}$.  Then
+  $\proj{C}{\rr}=\proj{C_0}{\rr}$, and by Lemma~\ref{lem:c2-pbind} and
+  Lemma~\ref{lem:c2-erase}, since $\rr\notin\roles{C_v}\subseteq\roles{A}$,
+  \[
+    \proj{\mbind{C_v}{x}{C_0}}{\rr}
+    = \mbind{\proj{C_v}{\rr}}{x}{\proj{C_0}{\rr}}
+    = \mbind{(\kw{ret}\;\bot)}{x}{\proj{C_0}{\rr}}
+    = \proj{C_0}{\rr}.
+  \]
+\item \emph{Network frame} (Lemma~\ref{lem:c1-nframe}): in \rn{N-Cast} the
+  roles whose programs are read or changed are exactly $\{\pp\}\cup Q$.
+\item \emph{Network inversion} (Lemma~\ref{lem:c1-inv}) gains two items:
+  \begin{enumerate}[label=(\alph*),start=4,nosep]
+  \item\label{it:c2-inv-cast} if $N(\rr)=x\leftarrow\sendbr{Q}{a}{P_\ttrue}{P_\ffalse}\,;\,P$,
+    then the rule is \rn{N-Cast}, $a$ is a value $v\in\{\ttrue,\ffalse\}$,
+    $\ell=\castlbl{\rr}{v}{Q}$, every $\qq\in Q$ has a program
+    $N(\qq)=x_\qq\leftarrow\recvbr{\rr}{P^\qq_\ttrue}{P^\qq_\ffalse}\,;\,P^\qq$,
+    and $N'$ is as in the conclusion of \rn{N-Cast};
+  \item\label{it:c2-inv-brecv} if $N(\rr)=x\leftarrow\recvbr{\pp}{P_\ttrue}{P_\ffalse}\,;\,P$,
+    then the rule is \rn{N-Cast}, $N(\pp)=y\leftarrow\sendbr{Q}{v}{P'_\ttrue}{P'_\ffalse}\,;\,P'$
+    for some $Q\ni\rr$ and $v\in\{\ttrue,\ffalse\}$, and item
+    \ref{it:c2-inv-cast} applies to $\pp$.
+  \end{enumerate}
+  Each of the two new shapes occurs in exactly one position of one rule.
+\end{itemize}
+
+\begin{theorem}[EPP is lockstep]\label{thm:c2-epp}
+  Suppose $\Gamma\vdash C:\sr$.
+  \begin{enumerate}[label=(\arabic*),nosep]
+  \item\label{it:c2-complete} If $C\lto{\ell}C'$, then $\projn{C}\lto{\ell}\projn{C'}$.
+  \item\label{it:c2-sound} If $\projn{C}\lto{\ell}N$, then $C\lto{\ell}C'$
+    for some $C'$ with $N=\projn{C'}$.
+  \end{enumerate}
+\end{theorem}
+\begin{proof}
+  As for Theorem~\ref{thm:c1-epp}, with one new case in each direction.
+
+  \case{\rn{Cast}, completeness}
+  $C=\bind{x}{A}{C_0}$ with $A=\cif{\pp}{v}{C_\ttrue}{C_\ffalse}$, $Q=\rcv{A}$,
+  $\ell=\castlbl{\pp}{v}{Q}$ and $C'=\mbind{C_v}{x}{C_0}$.  By
+  Definition~\ref{def:c2-epp}, $\proj{C}{\pp}$ is a send-and-branch to $Q$
+  with guard $v$ and branches $\proj{C_\ttrue}{\pp}$ and $\proj{C_\ffalse}{\pp}$,
+  and for every $\qq\in Q$, $\proj{C}{\qq}$ is a receive-and-branch from $\pp$
+  with branches $\proj{C_\ttrue}{\qq}$ and $\proj{C_\ffalse}{\qq}$, each
+  followed by the projection of $C_0$.  Rule \rn{N-Cast} fires.  Its target
+  at each $\rr\in\{\pp\}\cup Q$ is
+  $\mbind{\proj{C_v}{\rr}}{x}{\proj{C_0}{\rr}}=\proj{C'}{\rr}$, by
+  Lemma~\ref{lem:c2-pbind}.  At every other role the target is unchanged,
+  and so is the projection, by the \rn{Cast} case of
+  Lemma~\ref{lem:c1-cframe}.
+
+  \case{Conditional, soundness}
+  $C=\bind{x}{A}{C_0}$ with $A=\cif{\pp}{a}{C_\ttrue}{C_\ffalse}$, and the
+  step involves some $\rr\in\roles{A}=\{\pp\}\cup Q$.  If $\rr=\pp$, then
+  $\projn{C}(\pp)$ is a send-and-branch to $Q$ with guard $a$, and
+  Lemma~\ref{lem:c1-inv}\ref{it:c2-inv-cast} (as extended above) gives that $a$ is a value
+  $v\in\{\ttrue,\ffalse\}$, $\ell=\castlbl{\pp}{v}{Q}$, and that the target is
+  that of \rn{N-Cast}.  If $\rr\in Q$, then $\projn{C}(\rr)$ is a
+  receive-and-branch from $\pp$, and
+  Lemma~\ref{lem:c1-inv}\ref{it:c2-inv-brecv} (as extended above) reduces to the previous case,
+  since the sender it names is $\pp$ and $\projn{C}(\pp)$ is a send-and-branch
+  to $Q$.  Rule \rn{Cast} gives $C\lto{\castlbl{\pp}{v}{Q}}\mbind{C_v}{x}{C_0}$,
+  and the projection of the target is the network target, as in the
+  completeness case.
+
+  The disjoint subcase of soundness, for any action, and the \rn{Delay} case
+  of completeness are unchanged: they use only the empty prefix at roles
+  outside $\roles{A}$ and the frame lemmas.
+\end{proof}
+
+\begin{corollary}[Bisimulation]\label{cor:c2-bisim}
+  $\{(C,\projn{C})\mid\Gamma\vdash C:\sr\}$ is a strong bisimulation with
+  identical labels.
+\end{corollary}
+
+\begin{theorem}[Deadlock freedom]\label{thm:c2-df}
+  Assume (L2), (L3) and $\emptyset\vdash C:\sr$.  Every network reachable from
+  $\projn{C}$ is either terminated or can step.
+\end{theorem}
+\begin{proof}
+  As for Theorem~\ref{thm:c1-df}.  The new case is a head conditional, whose
+  guard is closed and hence a value, which is a boolean by (L3), so \rn{Cast}
+  fires.
+\end{proof}
+
+\paragraph{Confluence.}
+Lemmas~\ref{lem:c1-det}, \ref{lem:c1-diamond} and~\ref{lem:c1-conf} hold for
+networks with \rn{N-Cast}.  The label $\castlbl{\pp}{v}{Q}$ determines the
+rule, the roles and the value, and the head of $N(\rr)$ still determines the
+label of any step involving $\rr$: a send-and-branch at $\rr$ forces
+$\castlbl{\rr}{v}{Q}$ with $v$ its guard, and a receive-and-branch from $\pp$
+forces the label read off $N(\pp)$.  Theorem~\ref{thm:c1-agree} therefore
+holds, assuming (L3) in addition so that a run can only stop at a return, with
+one change: since the two branches of a conditional need not have
+the same number of actions, statement~(1) becomes ``every maximal run is
+finite, and all maximal runs have the same length''.  Runs are finite
+because every step strictly decreases the total number of actions, counting
+those inside branches.
+
+\section{Worked example}
+\label{sec:c2-example}
+
+Role $\pp$ decides whether to forward a value to $\qq$, while $\rr$ and $\sr$
+exchange a value independently.
+\[
+\begin{array}{r@{\;\;}l}
+  C \;=\; & \bind{n}{\pp.7}{}\\
+          & \bind{b}{\pp.(n>5)}{}\\
+          & \bind{y}{\cif{\pp}{b}{(\bind{z}{\com{\pp}{n}{\qq}}{\cret{\qq.z}})}{(\cret{\qq.0})}}{}\\
+          & \bind{w}{\rr.1}{}\\
+          & \bind{u}{\com{\rr}{w}{\sr}}{}\\
+          & \cret{\qq.y}
+\end{array}
+\]
+The conditional has roles $\{\pp,\qq\}$ and receivers $\{\qq\}$.  Role $\qq$
+takes part in the communication of the first branch, and it holds the result
+of both, so it learns the outcome even when the second branch, where it does
+nothing else, is taken (Choice~\ref{cho:c2-ret}).  Its projection is
+\[
+\begin{array}{r@{\;\;}l}
+  \pp: & n\leftarrow 7\,;\; b\leftarrow n>5\,;\;
+         y\leftarrow\sendbr{\{\qq\}}{b}{(\nsend{\qq}{n}\,;\,\kw{ret}\;\bot)}{\kw{ret}\;\bot}\,;\;\kw{ret}\;\bot\\
+  \qq: & y\leftarrow\recvbr{\pp}{(z\leftarrow\nrecv{\pp}\,;\,\kw{ret}\;z)}{\kw{ret}\;0}\,;\;\kw{ret}\;y\\
+  \rr: & w\leftarrow 1\,;\;\nsend{\sr}{w}\,;\;\kw{ret}\;\bot\\
+  \sr: & u\leftarrow\nrecv{\rr}\,;\;\kw{ret}\;\bot
+\end{array}
+\]
+Neither $\rr$ nor $\sr$ is involved in the conditional.  They receive no
+message, and \rn{Delay} lets them run before, during or after it.  Had the
+continuation been copied into both branches, both would have been receivers.
+
+After $\pp$'s two local steps, the guard is $\ttrue$ and \rn{Cast} fires with
+label $\castlbl{\pp}{\ttrue}{\{\qq\}}$.  Suppose $\rr$ and $\sr$ have not yet
+acted.  The choreography becomes
+\begin{align*}
+  &\mbind{(\bind{z}{\com{\pp}{7}{\qq}}{\cret{\qq.z}})}{y}{(\bind{w}{\rr.1}{\bind{u}{\com{\rr}{w}{\sr}}{\cret{\qq.y}}})}\\
+  &\qquad=\;
+  \bind{z}{\com{\pp}{7}{\qq}}{\bind{w}{\rr.1}{\bind{u}{\com{\rr}{w}{\sr}}{\cret{\qq.z}}}}.
+\end{align*}
+In the network, $\pp$ continues as
+$\mbind{(\nsend{\qq}{7}\,;\,\kw{ret}\;\bot)}{y}{\kw{ret}\;\bot}=\nsend{\qq}{7}\,;\,\kw{ret}\;\bot$
+and $\qq$ as
+$\mbind{(z\leftarrow\nrecv{\pp}\,;\,\kw{ret}\;z)}{y}{\kw{ret}\;y}=z\leftarrow\nrecv{\pp}\,;\,\kw{ret}\;z$,
+which are the projections of the new choreography.  Every maximal run has six
+steps and ends in $\cret{\qq.7}$.
+
+%======================================================================
+\chapter{First-Order Functions and Recursion}
+\label{ch:fun}
+%======================================================================
+
+This chapter adds named functions with located parameters, recursion, and
+calls that return a value:
+\[
+  \bind{x}{f(\pp_1.a_1,\ldots,\pp_n.a_n)}{C}.
+\]
+Unlike in CC, calls need not be in tail position: the result of a call is
+held at a role and bound by the continuation, like the result of any other
+action.
+
+At the network level each participant of a function runs its own local
+version of it and enters a call independently of the others.  We follow the
+approach of making every such entry a visible step at both levels and
+recording, in the choreography, a call that some participants have entered
+and others have not, with a runtime term.  In the monadic setting the
+runtime term must also absorb the continuation of the call
+(Choice~\ref{cho:c3-absorb}).
+
+\section{Design choices}
+\label{sec:c3-choices}
+
+\begin{choice}[Entering a call is a visible step for each role]\label{cho:c3-enter}
+  A role enters a call on its own, labelled $\tauat{\rr}$, at both levels.  In
+  the choreography, the first participant to enter unfolds the body (rule
+  \rn{Call}), and the remaining participants enter one at a time (rule
+  \rn{Enter}).
+
+  \emph{Proof saved.}  If the choreography unfolded a call for all
+  participants at once, as when calls are unfolded by a structural
+  congruence, one choreography step would correspond to several network
+  steps, or to none, and the bisimulation could only be stated up to
+  unfolding.  Making all participants synchronise at a call would restore
+  lockstep, but only by adding synchronisation that no implementation needs.
+  With per-role entry, every unfolding is a labelled step at both levels and
+  the correspondence stays exact.
+\end{choice}
+
+\begin{choice}[The runtime term absorbs the continuation]\label{cho:c3-absorb}
+  When the first role enters $K=\bind{x}{f(\vec\alpha)}{C}$, the choreography
+  becomes $\rt{S}{K}{D}$, where $S$ is the set of participants still to
+  enter, $K$ is kept as it was, and $D$ starts as
+  $\mbind{C_f[\vec a/\vec x]}{x}{C}$: the body followed by the continuation.
+  The runtime term is a choreography in tail position, not an action.
+
+  \emph{Proof saved.}  Recording the call as an action,
+  $\bind{x}{\rt{S}{f(\vec\alpha)}{C'}}{C}$, with the continuation outside,
+  breaks the bisimulation (Remark~\ref{rem:c3-action}): a role that holds
+  the result can continue in the network as soon as its part of the body is
+  done, while in the choreography $x$ is not substituted until every
+  participant has entered.  Absorbing the continuation applies monad
+  associativity once, at entry, so the result reaches the continuation
+  exactly when the body produces it, as in the network.
+\end{choice}
+
+\begin{choice}[Role sets are declared, not computed]\label{cho:c3-rho}
+  Each function declares a set $\rho_f$ of participants, which is checked to
+  contain $\roles{C_f}$ (counting the declared sets of the functions it
+  calls).
+
+  \emph{Proof saved.}  The proofs use only the inclusion
+  $\roles{C_f}\subseteq\rho_f$, never its minimality, so checking replaces
+  computing a fixed point, and $\roles{\cdot}$ remains a simple structural
+  function.  The least valid declaration exists and can be inferred
+  (Remark~\ref{rem:c3-lfp}).  A role in $\rho_f$ that has nothing to do in the
+  body still enters the call: one $\tauat{\rr}$ step at both levels, and
+  nothing else.  Chapter~\ref{ch:ho} relies on the same device.
+\end{choice}
+
+\begin{choice}[Calls are erased at non-participants]\label{cho:c3-erase}
+  A role outside $\rho_f$ gets nothing for a call, as for any action
+  (Choice~\ref{cho:c1-erase}).
+
+  \emph{Proof saved.}  Non-participants take no steps for the call, and
+  \rn{Delay} lets them run past it.  This is also why the network can run a
+  role's continuation as soon as that role is done with the body.
+\end{choice}
+
+\begin{choice}[Nothing in a call needs to be a value]\label{cho:c3-novalue}
+  The label of an entry, $\tauat{\rr}$, carries no value, so following
+  Choice~\ref{cho:c1-values}, neither \rn{Call}, \rn{Enter} nor \rn{N-Call}
+  requires the arguments to be values.  Arguments are substituted into the
+  body at the first entry, as atoms.  An argument of a role that has not yet
+  entered may still be a variable bound by a pending action, and the
+  substitution of its value later reaches into the runtime term.
+
+  \emph{Proof saved.}  There is no premise to match between the two
+  semantics.  For closed well-typed terms a value premise would be
+  redundant: an argument held at $\rr$ that is still a variable is bound by a
+  pending action involving $\rr$, so \rn{Delay} already prevents $\rr$ from
+  entering.  For open terms it would break soundness, since \rn{N-Call}
+  fires whatever the arguments are, and so would requiring values in
+  Chapter~\ref{ch:ho}, where some arguments are functions that may contain
+  free variables.
+\end{choice}
+
+\begin{choice}[One well-formedness invariant]\label{cho:c3-wf}
+  A runtime term $\rt{S}{K}{D}$ is well-formed if the roles still to enter
+  participate in the call, and the current state $D$ still expects of each
+  of them exactly what they will do when they enter.
+
+  \emph{Proof saved.}  This is the only invariant in the development.  It
+  holds trivially for source choreographies, and \rn{Call} establishes it.
+  \rn{Local}, \rn{Com} and \rn{Cast} preserve it because it is closed under
+  substitution and bind, and \rn{Inside} by the choreographic frame lemma.
+\end{choice}
+
+\begin{choice}[\rn{Call} is \rn{Enter} on a virtual runtime term]\label{cho:c3-view}
+  Before anyone has entered, the call $K$ has the same projection as the
+  runtime term $\rt{\rho_f}{K}{\unfold{K}}$, in which every participant is
+  still to enter (Lemma~\ref{lem:c3-view}).  \rn{Call} is then exactly
+  \rn{Enter} applied to this term.
+
+  \emph{Proof saved.}  Every proof case for \rn{Call} is an instance of the
+  corresponding case for \rn{Enter}.
+\end{choice}
+
+\section{Syntax and typing}
+\label{sec:c3-syntax}
+
+We fix a finite set of function names $f,g$.  A \emph{signature} $\Sig$
+assigns each $f$ a type $\farr{\pp_1,\ldots,\pp_n}{\rho_f}{\sr_f}$: the roles
+holding its arguments, its declared set of participants, and the role holding
+its result.  A set of \emph{definitions} $\Defs$ assigns each $f$ a body
+$f(x_1,\ldots,x_n)=C_f$.
+
+\begin{definition}[Choreographies with calls]\label{def:c3-syntax}
+  \[
+  \begin{array}{r@{\;\;}c@{\;\;}l@{\qquad}l}
+    A & ::= & \cdots & \text{as in Definition~\ref{def:c2-syntax}}\\
+      & \mid & f(\pp_1.a_1,\ldots,\pp_n.a_n) & \text{call, written } f(\vec\alpha)\\[1ex]
+    C & ::= & \cret{\pp.a} \;\mid\; \bind{x}{A}{C} & \text{as before}\\
+      & \mid & \rt{S}{K}{D} & \text{runtime term, } \emptyset\neq S\subseteq\Roles\\[1ex]
+    K & ::= & \bind{x}{f(\vec\alpha)}{C} & \text{a call with its continuation}
+  \end{array}
+  \]
+  A choreography is a \emph{source} choreography if it contains no runtime
+  term.  The branches of a conditional and the bodies $C_f$ are source
+  choreographies.  We write $\vec a$ for the atoms $a_1,\ldots,a_n$ of the
+  arguments $\vec\alpha$, and $\vec\alpha|_\rr$ for the subsequence of those
+  $a_i$ with $\pp_i=\rr$; likewise $\vec x|_\rr$ for the parameters $x_i$ with
+  $\pp_i=\rr$.
+\end{definition}
+
+The runtime term $\rt{S}{K}{D}$ is not written by programmers.  It records a
+call $K$ that some, but not all, of its participants have entered: the roles
+in $S$ have yet to enter, and $D$ is the current state of the body followed by
+the continuation.  So that the rules can be stated uniformly, the notation
+$\rt{\emptyset}{K}{D}$ stands for $D$: once every participant has entered,
+there is nothing left to record.  Substitution acts on both components,
+$(\rt{S}{K}{D})[a/y]=\rt{S}{K[a/y]}{D[a/y]}$.
+
+\paragraph{Roles.}
+$\roles{f(\vec\alpha)}=\rho_f$, and $\roles{\cdot}$ is otherwise as in
+Definition~\ref{def:c2-roles}.  It is only ever applied to source terms:
+actions, branches and bodies.
+
+\paragraph{Typing.}
+Two rules are added to those of \S\ref{sec:c2-syntax}:
+\begin{mathpar}
+  \inferrule{\Sig(f)=\farr{\pp_1,\ldots,\pp_n}{\rho_f}{\sr_f} \\ \Gamma\vdash_{\pp_i}a_i\ \text{for each } i}
+            {\Gamma\vdash f(\pp_1.a_1,\ldots,\pp_n.a_n):\sr_f}
+  \and
+  \inferrule{\Gamma\vdash K:\sr \\ \Gamma\vdash D:\sr}{\Gamma\vdash\rt{S}{K}{D}:\sr}
+\end{mathpar}
+The definitions are \emph{well-typed} if, for every $f$ with
+$\Sig(f)=\farr{\pp_1,\ldots,\pp_n}{\rho_f}{\sr_f}$,
+\[
+  x_1{:}\pp_1,\ldots,x_n{:}\pp_n\vdash C_f:\sr_f
+  \qquad\text{and}\qquad
+  \roles{C_f}\subseteq\rho_f.
+\]
+We assume this throughout.  By the first claim of
+Lemma~\ref{lem:c2-locroles}, applied to the source choreography $C_f$,
+$\sr_f\in\roles{C_f}\subseteq\rho_f$, so every function has at least one
+participant, and the second claim holds for calls.
+
+\begin{remark}[Inferring role sets]\label{rem:c3-lfp}
+  Since $\roles{C_f}$ depends on the declared sets of the functions $C_f$
+  calls, the valid declarations are the functions $\rho$ with
+  $\roles{C_f}\subseteq\rho_f$ for all $f$.  The map
+  $\rho\mapsto(f\mapsto\roles{C_f})$ is monotone on a finite lattice, so the
+  least valid declaration is its least fixed point, computed by iteration from
+  the everywhere-empty function.  Using it minimises the receivers of every
+  conditional.
+\end{remark}
+
+\section{Choreographic semantics}
+\label{sec:c3-sem}
+
+\begin{definition}[Unfolding]\label{def:c3-unfold}
+  For $K=\bind{x}{f(\vec\alpha)}{C}$, with the bound variables of $C_f$
+  renamed apart,
+  \[
+    \unfold{K} \;=\; \mbind{C_f[\vec a/\vec x]}{x}{C}.
+  \]
+\end{definition}
+
+\begin{figure}[t]
+\begin{mathpar}
+  \inferrule*[right=\rn{Call}]
+    {K=\bind{x}{f(\vec\alpha)}{C} \\ \rr\in\rho_f}
+    {K \lto{\tauat{\rr}} \rt{\rho_f\setminus\{\rr\}}{K}{\unfold{K}}}
+  \and
+  \inferrule*[right=\rn{Enter}]
+    {\rr\in S}
+    {\rt{S}{K}{D} \lto{\tauat{\rr}} \rt{S\setminus\{\rr\}}{K}{D}}
+  \and
+  \inferrule*[right=\rn{Inside}]
+    {D\lto{\ell}D' \\ S\cap\roles{\ell}=\emptyset}
+    {\rt{S}{K}{D} \lto{\ell} \rt{S}{K}{D'}}
+\end{mathpar}
+\caption{Rules for calls.  A target $\rt{\emptyset}{K}{D}$ stands for $D$.}
+\label{fig:c3-sem}
+\end{figure}
+
+The semantics consists of \rn{Local}, \rn{Com}, \rn{Delay}, \rn{Cast}, and
+the rules of Figure~\ref{fig:c3-sem}.  Rule \rn{Call} lets a participant
+$\rr$ of $f$ enter: the body, followed by the continuation, becomes active,
+and every other participant still has to enter.  Rule \rn{Enter} lets a
+further participant enter; when the last one does, the runtime term
+disappears.  Rule \rn{Inside} lets the roles that have entered proceed, as
+long as the step involves no role that has not.  It plays the role of
+\rn{Delay} for runtime terms, with $S$ in place of an action.  Since $D$
+contains the continuation, \rn{Inside} also lets non-participants of $f$ run
+past the call, and lets participants that have finished their part of the
+body continue with the result.
+
+\rn{Call} fires on a call that is not at the head through \rn{Delay}, like any
+other action.  The term $K$ in $\rt{S}{K}{D}$ never steps.  It is only used
+to project the roles in $S$, which have not moved since the first entry.
+
+\begin{remark}[Why the runtime term absorbs the continuation]\label{rem:c3-action}
+  Let $\Sig(f)=\farr{}{\{\qq,\rr\}}{\rr}$ and
+  $f()=\bind{y}{\qq.e}{\cret{\rr.5}}$, and consider
+  \[
+    \bind{x}{f()}{\bind{z}{\rr.(x+1)}{\cret{\rr.z}}}.
+  \]
+  In the network, $\rr$'s program is
+  $x\leftarrow f()\,;\;z\leftarrow x+1\,;\;\kw{ret}\;z$ and $\rr$'s local
+  version of $f$ is $\kw{ret}\;5$.  After $\rr$ enters, its program is
+  $z\leftarrow 5+1\,;\;\kw{ret}\;z$, and it can compute $5+1$ while $\qq$ has
+  not yet entered.  If the runtime term were an action, the choreography would
+  be $\bind{x}{\rt{\{\qq\}}{f()}{(\bind{y}{\qq.e}{\cret{\rr.5}})}}{\bind{z}{\rr.(x+1)}{\cret{\rr.z}}}$,
+  in which $x$ is still bound and $\rr.(x+1)$ cannot fire.  With the runtime
+  term of Figure~\ref{fig:c3-sem}, the choreography after $\rr$ enters is
+  \[
+    \rt{\{\qq\}}{K}{(\bind{y}{\qq.e}{\bind{z}{\rr.(5+1)}{\cret{\rr.z}}})},
+  \]
+  where $K$ is the program above,
+  and $\rr$'s step is available through \rn{Inside} and \rn{Delay}.
+\end{remark}
+
+\begin{remark}[Nesting]\label{rem:c3-nesting}
+  A role may fall arbitrarily far behind the others, and runtime terms may
+  then nest.  With $\Sig(g)=\farr{}{\{\pp,\qq,\rr\}}{\pp}$ and
+  $g()=\bind{x}{\com{\pp}{1}{\qq}}{\bind{y}{\rr.1}{\bind{z}{g()}{\cret{\pp.z}}}}$,
+  roles $\pp$ and $\qq$ can iterate while $\rr$ has not entered the first
+  call, building a term of the form
+  $\rt{\{\rr\}}{K_1}{(\bind{y}{\rr.1}{\rt{\{\rr\}}{K_2}{(\cdots)}})}$ that
+  records the actions $\rr$ still owes.  The network state stays small:
+  $\rr$ is still at its first call.
+\end{remark}
+
+\section{Networks}
+\label{sec:c3-net}
+
+\begin{definition}[Networks with functions]\label{def:c3-net}
+  Prefixes gain a local call, $\pi ::= \cdots \mid x\leftarrow f(\vec a)\,;$.
+  The network semantics is parameterised by \emph{local definitions}
+  $\Defs_\rr(f)=(\vec y).\,P$, giving, for each role $\rr$ and function $f$ that
+  $\rr$ participates in, a parameter list and a body.  It consists of the rules
+  of \S\ref{sec:c2-net} and
+  \begin{mathpar}
+    \inferrule*[right=\rn{N-Call}]
+      {N(\rr)=x\leftarrow f(\vec a)\,;\,P \\ \Defs_\rr(f)=(\vec y).\,P_f}
+      {N \lto{\tauat{\rr}} \upd{N}{\rr}{\mbind{P_f[\vec a/\vec y]}{x}{P}}}
+  \end{mathpar}
+\end{definition}
+
+A role unfolds its own call without synchronising with anyone.  No network
+counterpart of the runtime term is needed: a call that some participants have
+entered is a network in which some roles are at the call and the
+others are running their local bodies.
+
+\section{Endpoint projection}
+\label{sec:c3-epp}
+
+\begin{definition}[Projection of calls and runtime terms]\label{def:c3-epp}
+  Projection extends Definition~\ref{def:c2-epp} with
+  \[
+  \pre{f(\vec\alpha)}{x}{\rr} =
+    \begin{cases}
+      x\leftarrow f(\vec\alpha|_\rr)\,; & \rr\in\rho_f\\
+      \varepsilon & \text{otherwise}
+    \end{cases}
+  \qquad
+  \proj{\rt{S}{K}{D}}{\rr} =
+    \begin{cases}
+      \proj{K}{\rr} & \rr\in S\\
+      \proj{D}{\rr} & \text{otherwise.}
+    \end{cases}
+  \]
+  The projected local definitions are
+  $\projn{\Defs}_\rr(f)=(\vec x|_\rr).\,\proj{C_f}{\rr}$ for $\rr\in\rho_f$.
+  Throughout, the network semantics is taken with respect to
+  $\projn{\Defs}$.
+\end{definition}
+
+A role that has not entered a call is, in the projection, still at the call.
+Every other role runs its projection of the current state.
+Lemma~\ref{lem:c1-prefix} still holds: a call's prefix binds $x$ at every
+participant, and is empty only outside $\rho_f$, which contains $\sr_f$.
+
+\section{Well-formedness}
+\label{sec:c3-wf}
+
+A role $\qq\in S$ that has not yet entered $\rt{S}{K}{D}$ is, in the
+projection, at the call $K$.  When it enters it will continue as its
+projection of $\unfold{K}$.  For the choreography and the network to stay in
+step, $D$ must still expect exactly that behaviour from $\qq$.
+
+\begin{definition}[Well-formedness]\label{def:c3-wf}
+  $\WF(C)$ is defined by recursion on $C$: $\WF(\cret{\pp.a})$ holds;
+  $\WF(\bind{x}{A}{C})$ holds if $\WF(C)$ does; and
+  $\WF(\rt{S}{K}{D})$ holds, where $K=\bind{x}{f(\vec\alpha)}{C}$, if
+  \begin{enumerate}[label=(\roman*),nosep]
+  \item\label{it:c3-wf-sub} $\WF(K)$ and $\WF(D)$,
+  \item\label{it:c3-wf-part} $S\subseteq\rho_f$, and
+  \item\label{it:c3-wf-agree} $\proj{D}{\qq}=\proj{\unfold{K}}{\qq}$ for every $\qq\in S$.
+  \end{enumerate}
+\end{definition}
+
+Every source choreography is well-formed, since the conditions concern only
+runtime terms.  Both non-trivial conditions are needed.
+
+\begin{example}[Ill-formed runtime terms]\label{ex:c3-notwf}
+  Let $\Sig(f)=\farr{}{\{\pp,\qq\}}{\qq}$ with
+  $f()=\bind{y}{\com{\pp}{1}{\qq}}{\cret{\qq.y}}$, and
+  $K=\bind{x}{f()}{\cret{\qq.x}}$.
+  \begin{itemize}
+  \item The term $\rt{\{\qq\}}{K}{(\cret{\qq.5})}$ violates
+    \ref{it:c3-wf-agree}: $\proj{\cret{\qq.5}}{\qq}=\kw{ret}\;5$, but
+    $\proj{\unfold{K}}{\qq}=y\leftarrow\nrecv{\pp}\,;\,\kw{ret}\;y$.  By
+    \rn{Enter} it steps to $\cret{\qq.5}$, which is terminated.  Its
+    projection maps $\qq$ to $x\leftarrow f()\,;\,\kw{ret}\;x$, and once $\qq$
+    unfolds its call it waits forever for a message from $\pp$.
+  \item With $D=\unfold{K}$, the term $\rt{\{\tr\}}{K}{D}$ for a role
+    $\tr\notin\{\pp,\qq\}$ satisfies \ref{it:c3-wf-agree}, since both sides
+    are $\kw{ret}\;\bot$ at $\tr$, but violates \ref{it:c3-wf-part}.  By
+    \rn{Enter} it steps with $\tauat{\tr}$, but in its projection $\tr$'s
+    program is $\kw{ret}\;\bot$, which cannot step.
+  \end{itemize}
+\end{example}
+
+\section{Correctness}
+\label{sec:c3-correct}
+
+All lemmas of Chapters~\ref{ch:core} and~\ref{ch:cond} hold for the extended
+language.  Lemma~\ref{lem:c2-erase} (erasure) and Lemma~\ref{lem:c2-pbind}
+(projection commutes with bind) are only ever applied with a source term in
+the position where they inspect roles, namely $C$ in the first and $C_1$ in
+the second, and we state them for that case.  The new lemmas come first,
+followed by the new cases of the old ones.
+
+\begin{lemma}[Substitution and well-formedness]\label{lem:c3-wfsubst}
+  Substitution commutes with bind and unfolding, and preserves
+  well-formedness:
+  \begin{enumerate}[label=(\roman*),nosep]
+  \item\label{it:c3-ws-bind} If $x\neq y$ and $x\notin\fv(a)$, then
+    $(\mbind{C_1}{x}{C_2})[a/y]=\mbind{C_1[a/y]}{x}{C_2[a/y]}$; hence
+    $\unfold{K}[a/y]=\unfold{K[a/y]}$.
+  \item\label{it:c3-ws-subst} If $\WF(C)$ then $\WF(C[a/y])$.
+  \item\label{it:c3-ws-mbind} If $C_1$ is a source choreography and $\WF(C_2)$,
+    then $\WF(\mbind{C_1}{x}{C_2})$.
+  \end{enumerate}
+\end{lemma}
+\begin{proof}
+  \ref{it:c3-ws-bind} By induction on $C_1$.  For unfolding, the only free
+  variables of $C_f$ are its parameters, so
+  $C_f[\vec a/\vec x][a/y]=C_f[\vec a[a/y]/\vec x]$.
+  \ref{it:c3-ws-subst} By induction on $C$.  For a runtime term, conditions
+  \ref{it:c3-wf-sub} and \ref{it:c3-wf-part} follow from the induction
+  hypothesis and the fact that substitution does not change the function
+  called, and for \ref{it:c3-wf-agree}, by Lemma~\ref{lem:c1-psubst} and
+  part~\ref{it:c3-ws-bind},
+  $\proj{D[a/y]}{\qq}=\proj{D}{\qq}[a/y]=\proj{\unfold{K}}{\qq}[a/y]=\proj{\unfold{K[a/y]}}{\qq}$.
+  \ref{it:c3-ws-mbind} The runtime terms of $\mbind{C_1}{x}{C_2}$ are those of
+  $C_2[b/x]$, where $\cret{\sr.b}$ ends the spine of $C_1$; apply
+  part~\ref{it:c3-ws-subst}.
+\end{proof}
+
+\begin{lemma}[Unfolding]\label{lem:c3-unfold}
+  Let $\Gamma\vdash K:\sr$ with $K=\bind{x}{f(\vec\alpha)}{C}$.
+  \begin{enumerate}[label=(\roman*),nosep]
+  \item\label{it:c3-unf-in} If $\rr\in\rho_f$, then
+    $\proj{K}{\rr}=x\leftarrow f(\vec\alpha|_\rr)\,;\,\proj{C}{\rr}$, and
+    \rn{N-Call} replaces it by $\proj{\unfold{K}}{\rr}$.
+  \item\label{it:c3-unf-out} If $\rr\notin\rho_f$, then $\proj{\unfold{K}}{\rr}=\proj{K}{\rr}$.
+  \end{enumerate}
+\end{lemma}
+\begin{proof}
+  By typing, $\Gamma\vdash C_f[\vec a/\vec x]:\sr_f$ (Lemma~\ref{lem:c1-subst},
+  after weakening) and $\Gamma,x{:}\sr_f\vdash C:\sr$, so
+  Lemma~\ref{lem:c2-pbind} gives
+  $\proj{\unfold{K}}{\rr}=\mbind{\proj{C_f[\vec a/\vec x]}{\rr}}{x}{\proj{C}{\rr}}$.
+
+  \ref{it:c3-unf-in} \rn{N-Call} produces
+  $\mbind{\proj{C_f}{\rr}[\vec\alpha|_\rr/\vec x|_\rr]}{x}{\proj{C}{\rr}}$.
+  By Lemma~\ref{lem:c1-psubst},
+  $\proj{C_f[\vec a/\vec x]}{\rr}=\proj{C_f}{\rr}[\vec a/\vec x]$, and by
+  Lemma~\ref{lem:c1-local}, applied to $\vec x{:}\vec\pp\vdash C_f:\sr_f$, the
+  only parameters free in $\proj{C_f}{\rr}$ are those in $\vec x|_\rr$.  So
+  the two agree.
+
+  \ref{it:c3-unf-out} The prefix of the call at $\rr$ is empty, so
+  $\proj{K}{\rr}=\proj{C}{\rr}$.  Since
+  $\rr\notin\rho_f\supseteq\roles{C_f}=\roles{C_f[\vec a/\vec x]}$,
+  Lemma~\ref{lem:c2-erase} gives
+  $\proj{\unfold{K}}{\rr}=\mbind{(\kw{ret}\;\bot)}{x}{\proj{C}{\rr}}=\proj{C}{\rr}$.
+\end{proof}
+
+\begin{lemma}[View]\label{lem:c3-view}
+  Let $\Gamma\vdash K:\sr$ with $K=\bind{x}{f(\vec\alpha)}{C}$, and let
+  $\widehat{K}=\rt{\rho_f}{K}{\unfold{K}}$.
+  \begin{enumerate}[label=(\roman*),nosep]
+  \item\label{it:c3-view-proj} $\Gamma\vdash \widehat{K}:\sr$ and $\projn{\widehat{K}}=\projn{K}$.
+  \item\label{it:c3-view-wf} If $\WF(K)$ then $\WF(\widehat{K})$.
+  \item\label{it:c3-view-step} $K\lto{\tauat{\rr}}C'$ by \rn{Call} if and only
+    if $\widehat{K}\lto{\tauat{\rr}}C'$ by \rn{Enter}.
+  \end{enumerate}
+\end{lemma}
+\begin{proof}
+  \ref{it:c3-view-proj} Typing follows from Lemma~\ref{lem:c2-tbind}.  At
+  $\rr\in\rho_f$ both projections are $\proj{K}{\rr}$, and at
+  $\rr\notin\rho_f$, $\proj{\widehat{K}}{\rr}=\proj{\unfold{K}}{\rr}=\proj{K}{\rr}$ by
+  Lemma~\ref{lem:c3-unfold}\ref{it:c3-unf-out}.
+  \ref{it:c3-view-wf} $\WF(\unfold{K})$ by
+  Lemma~\ref{lem:c3-wfsubst}\ref{it:c3-ws-mbind}, since $C_f[\vec a/\vec x]$
+  is a source choreography and $\WF(C)$.  Condition \ref{it:c3-wf-part} is
+  trivial, and \ref{it:c3-wf-agree} holds because the current state is
+  $\unfold{K}$ itself.
+  \ref{it:c3-view-step} Compare the two rules.
+\end{proof}
+
+\begin{lemma}[Entering]\label{lem:c3-entering}
+  If $\Gamma\vdash\rt{S}{K}{D}:\sr$, $\WF(\rt{S}{K}{D})$ and $\rr\in S$, then
+  \[
+    \projn{\rt{S}{K}{D}} \lto{\tauat{\rr}} \projn{\rt{S\setminus\{\rr\}}{K}{D}}.
+  \]
+\end{lemma}
+\begin{proof}
+  Let $K=\bind{x}{f(\vec\alpha)}{C}$.  Since $\rr\in S\subseteq\rho_f$ by
+  \ref{it:c3-wf-part}, the projection at $\rr$ is
+  $\proj{K}{\rr}=x\leftarrow f(\vec\alpha|_\rr)\,;\,\proj{C}{\rr}$, and by
+  Lemma~\ref{lem:c3-unfold}\ref{it:c3-unf-in} \rn{N-Call} replaces it by
+  $\proj{\unfold{K}}{\rr}$, which is $\proj{D}{\rr}$ by \ref{it:c3-wf-agree}.
+  That is the projection of $\rt{S\setminus\{\rr\}}{K}{D}$ at $\rr$, since
+  $\rr\notin S\setminus\{\rr\}$.  At every other role $\tr$, $\tr\in S$ if
+  and only if $\tr\in S\setminus\{\rr\}$, so the two projections agree.  This
+  covers the case $S=\{\rr\}$, where the target is $D$.
+\end{proof}
+
+\paragraph{New cases of the supporting lemmas.}
+\begin{itemize}
+\item \emph{Substitution} and \emph{subject reduction}
+  (Lemmas~\ref{lem:c1-subst} and~\ref{lem:c1-sr}): arguments are checked at
+  their roles like any atom, and runtime terms componentwise.  For \rn{Call},
+  $\Gamma\vdash\unfold{K}:\sr$ as in the proof of
+  Lemma~\ref{lem:c3-unfold}; \rn{Enter} does not change the components; and
+  \rn{Inside} follows from the induction hypothesis.
+\item \emph{Projection is local} (Lemma~\ref{lem:c1-local}): a call's prefix
+  at $\rr$ mentions only the arguments $\vec\alpha|_\rr$, held at $\rr$; a
+  runtime term projects to the projection of one of its components.
+\item \emph{Projection commutes with substitution} (Lemma~\ref{lem:c1-psubst}):
+  $(\vec\alpha|_\rr)[a/y]=(\vec\alpha[a/y])|_\rr$, and runtime terms are
+  handled componentwise, since substitution does not change $S$.
+\item \emph{Choreographic frame} (Lemma~\ref{lem:c1-cframe}), for a role
+  $\tr\notin\roles{\ell}$.  \rn{Call}: by Lemma~\ref{lem:c3-view},
+  $\proj{K}{\tr}=\proj{\widehat{K}}{\tr}$, and \rn{Enter} at $\rr\neq\tr$ does not change
+  the projection at $\tr$, as in the proof of Lemma~\ref{lem:c3-entering}.
+  \rn{Enter}: the same.  \rn{Inside}: if $\tr\in S$ both sides are
+  $\proj{K}{\tr}$; otherwise apply the induction hypothesis to $D$.
+\item \emph{Network frame} and \emph{inversion}
+  (Lemmas~\ref{lem:c1-nframe} and~\ref{lem:c1-inv}): \rn{N-Call} reads and
+  changes only $N(\rr)$, and inversion gains the item
+  \begin{enumerate}[label=(\alph*),start=6,nosep]
+  \item\label{it:c3-inv-call} if $N(\rr)=x\leftarrow f(\vec a)\,;\,P$, then the
+    rule is \rn{N-Call}, $\ell=\tauat{\rr}$, and
+    $N'=\upd{N}{\rr}{\mbind{P_f[\vec a/\vec y]}{x}{P}}$ where
+    $\projn{\Defs}_\rr(f)=(\vec y).\,P_f$.
+  \end{enumerate}
+\end{itemize}
+
+\begin{lemma}[Preservation of well-formedness]\label{lem:c3-wfpres}
+  If $\Gamma\vdash C:\sr$, $\WF(C)$ and $C\lto{\ell}C'$, then $\WF(C')$.
+\end{lemma}
+\begin{proof}
+  By induction on the step.
+  \begin{itemize}[nosep]
+  \item \rn{Local} and \rn{Com}: $C'=C_0[v/x]$ with $\WF(C_0)$; use
+    Lemma~\ref{lem:c3-wfsubst}\ref{it:c3-ws-subst}.
+  \item \rn{Cast}: $C'=\mbind{C_v}{x}{C_0}$ with $C_v$ a source choreography;
+    use Lemma~\ref{lem:c3-wfsubst}\ref{it:c3-ws-mbind}.
+  \item \rn{Delay}: by the induction hypothesis.
+  \item \rn{Call}: $C'$ is the \rn{Enter} successor of the term $\widehat{K}$ of
+    Lemma~\ref{lem:c3-view}, which is well-formed, so this is the next case.
+  \item \rn{Enter}: condition \ref{it:c3-wf-part} is preserved by removing an
+    element from $S$, and \ref{it:c3-wf-agree} by restricting to fewer
+    roles.  If $S\setminus\{\rr\}=\emptyset$, then $C'=D$, which is
+    well-formed by \ref{it:c3-wf-sub}.
+  \item \rn{Inside}: $C=\rt{S}{K}{D}$ and $C'=\rt{S}{K}{D'}$ with
+    $D\lto{\ell}D'$ and $S\cap\roles{\ell}=\emptyset$.  $\WF(D')$ holds by the
+    induction hypothesis.  Every $\qq\in S$ is outside $\roles{\ell}$, so
+    Lemma~\ref{lem:c1-cframe} gives
+    $\proj{D'}{\qq}=\proj{D}{\qq}$, which is $\proj{\unfold{K}}{\qq}$.\qedhere
+  \end{itemize}
+\end{proof}
+
+\begin{theorem}[EPP is lockstep]\label{thm:c3-epp}
+  Suppose $\Gamma\vdash C:\sr$ and $\WF(C)$.
+  \begin{enumerate}[label=(\arabic*),nosep]
+  \item\label{it:c3-complete} If $C\lto{\ell}C'$, then $\projn{C}\lto{\ell}\projn{C'}$.
+  \item\label{it:c3-sound} If $\projn{C}\lto{\ell}N$, then $C\lto{\ell}C'$ for
+    some $C'$ with $N=\projn{C'}$.
+  \end{enumerate}
+\end{theorem}
+\begin{proof}
+  As for Theorem~\ref{thm:c2-epp}.  Subterms of well-formed choreographies
+  that the inductions reach (continuations and the current state $D$) are
+  well-formed, so the induction hypotheses apply.  The new cases follow.
+
+  \case{\rn{Enter}, completeness}
+  This is Lemma~\ref{lem:c3-entering}.
+
+  \case{\rn{Call}, completeness}
+  By Lemma~\ref{lem:c3-view}, $\projn{K}=\projn{\widehat{K}}$, $\widehat{K}$ is well-typed and
+  well-formed, and $C'$ is the \rn{Enter} successor of $\widehat{K}$.
+  Lemma~\ref{lem:c3-entering} applied to $\widehat{K}$ gives
+  $\projn{K}=\projn{\widehat{K}}\lto{\tauat{\rr}}\projn{C'}$.
+
+  \case{\rn{Inside}, completeness}
+  $C=\rt{S}{K}{D}$, $C'=\rt{S}{K}{D'}$, $D\lto{\ell}D'$ and
+  $S\cap\roles{\ell}=\emptyset$.  The induction hypothesis gives
+  $\projn{D}\lto{\ell}\projn{D'}$.  For $\rr\in\roles{\ell}$ we have $\rr\notin S$,
+  so $\proj{C}{\rr}=\proj{D}{\rr}$ and $\proj{C'}{\rr}=\proj{D'}{\rr}$; for
+  $\rr\notin\roles{\ell}$, $\proj{C'}{\rr}=\proj{C}{\rr}$ by
+  Lemma~\ref{lem:c1-cframe}.  Corollary~\ref{cor:c1-lift} concludes.
+
+  \case{Call, soundness}
+  $C=\bind{x}{f(\vec\alpha)}{C_0}$, and the step involves some
+  $\rr\in\rho_f$.  Then $\projn{C}(\rr)$ is the call $x\leftarrow
+  f(\vec\alpha|_\rr)\,;\,\proj{C_0}{\rr}$, so by
+  Lemma~\ref{lem:c1-inv}\ref{it:c3-inv-call} (as extended above) the step is \rn{N-Call} at $\rr$,
+  $\ell=\tauat{\rr}$, and $N$ changes only $\rr$'s program, to
+  $\proj{\unfold{C}}{\rr}$ by Lemma~\ref{lem:c3-unfold}\ref{it:c3-unf-in}.
+  Rule \rn{Call} gives $C\lto{\tauat{\rr}}C'=\rt{\rho_f\setminus\{\rr\}}{C}{\unfold{C}}$.
+  By the completeness case for \rn{Call}, $\projn{C}\lto{\tauat{\rr}}\projn{C'}$
+  by \rn{N-Call} at $\rr$, and \rn{N-Call} has a unique target, so
+  $\projn{C'}=N$.
+
+  \case{$C=\rt{S}{K}{D}$, soundness}
+  We distinguish whether the step involves a role that has not entered.
+  \begin{itemize}
+  \item If some $\rr\in S\cap\roles{\ell}$, then $\rr\in\rho_f$ by
+    \ref{it:c3-wf-part}, so $\projn{C}(\rr)=\proj{K}{\rr}$ is a call, and by
+    Lemma~\ref{lem:c1-inv}\ref{it:c3-inv-call} (as extended above) the step is \rn{N-Call} at
+    $\rr$ with $\ell=\tauat{\rr}$.  Rule \rn{Enter} gives
+    $C\lto{\tauat{\rr}}\rt{S\setminus\{\rr\}}{K}{D}$, whose projection is the
+    target of this step, by Lemma~\ref{lem:c3-entering}.
+  \item If $S\cap\roles{\ell}=\emptyset$, then $\projn{C}$ agrees with
+    $\projn{D}$ on $\roles{\ell}$.  By
+    Lemma~\ref{lem:c1-nframe}\ref{it:c1-nframe-move},
+    $\projn{D}\lto{\ell}N''$, where $N''$ agrees with $N$ on $\roles{\ell}$
+    and with $\projn{D}$ elsewhere.  The induction hypothesis gives
+    $D\lto{\ell}D'$ with $\projn{D'}=N''$, and \rn{Inside} gives
+    $C\lto{\ell}C'=\rt{S}{K}{D'}$.  For $\rr\in\roles{\ell}$,
+    $\proj{C'}{\rr}=\proj{D'}{\rr}=N(\rr)$; for $\rr\notin\roles{\ell}$,
+    $N(\rr)=\proj{C}{\rr}=\proj{C'}{\rr}$ by
+    Lemma~\ref{lem:c1-nframe}\ref{it:c1-nframe-loc} and
+    Lemma~\ref{lem:c1-cframe}.\qedhere
+  \end{itemize}
+\end{proof}
+
+\begin{corollary}[Bisimulation]\label{cor:c3-bisim}
+  $\{(C,\projn{C})\mid\Gamma\vdash C:\sr \text{ and } \WF(C)\}$ is a strong
+  bisimulation with identical labels.  In particular this holds from every
+  source choreography.
+\end{corollary}
+\begin{proof}
+  Theorem~\ref{thm:c3-epp}, with subject reduction and
+  Lemma~\ref{lem:c3-wfpres}.
+\end{proof}
+
+\begin{theorem}[Deadlock freedom]\label{thm:c3-df}
+  Assume (L2), (L3), $\emptyset\vdash C:\sr$ and $\WF(C)$.  Every network
+  reachable from $\projn{C}$ is either terminated or can step.
+\end{theorem}
+\begin{proof}
+  As for Theorem~\ref{thm:c2-df}, using Corollary~\ref{cor:c3-bisim}.  It
+  remains to show that every closed, well-formed $C$ that is not a return can
+  step.  If its head action is a call to $f$, \rn{Call} fires for any
+  $\rr\in\rho_f$, which is nonempty because it contains $\sr_f$.  If $C$ is a
+  runtime term $\rt{S}{K}{D}$, then $S\neq\emptyset$ and \rn{Enter} fires for
+  any $\rr\in S$.  Neither rule has a premise on the arguments.
+\end{proof}
+
+\begin{remark}[Confluence]\label{rem:c3-diamond}
+  The network lemmas of \S\ref{sec:c1-confluence} hold with \rn{N-Call}, whose
+  label $\tauat{\rr}$ is forced by a call at the head of $N(\rr)$.  So under
+  (L1)--(L3), for a closed, well-typed source program, if one maximal run is
+  finite then all are, and they have the same length, end in the same
+  return, and show the same labels at each role.  The corresponding diamond property fails syntactically for
+  choreographies.  Let $\Sig(f)=\farr{}{\{\qq,\rr\}}{\rr}$ with
+  $f()=\bind{y}{\qq.1}{\bind{z}{\com{\qq}{y}{\rr}}{\cret{\rr.z}}}$, and
+  $C=\bind{x}{f()}{\bind{w}{\tr.1}{\cret{\rr.x}}}$.  Taking $\tauat{\qq}$
+  (\rn{Call}) and then $\tauat{\tr}$ freezes $K=C$; taking them in the other
+  order freezes $K=\bind{x}{f()}{\cret{\rr.x}}$.  The two results have the
+  same projection, but differ as terms.  This is why confluence is proved on
+  networks.
+\end{remark}
+
+\section{Worked example}
+\label{sec:c3-example}
+
+The following function is a loop.  Role $\pp$ doubles a number until it
+exceeds $10$, $\qq$ counts the rounds that did not end the loop, and when the
+loop ends the number is forwarded to $\rr$ via $\qq$.  Let
+$\Sig(\mathit{loop})=\farr{\pp,\qq}{\{\pp,\qq,\rr\}}{\rr}$ and
+\[
+\begin{array}{r@{\;\;}l}
+  \mathit{loop}(x,k) \;=\; & \bind{y}{\pp.(2\cdot x)}{}\\
+    & \bind{b}{\pp.(y>10)}{}\\
+    & \bind{z}{\cif{\pp}{b}{T(y)}{E(y,k)}}{}\\
+    & \cret{\rr.z}\\[1ex]
+  T(y) \;=\; & \bind{w}{\com{\pp}{y}{\qq}}{\bind{u}{\com{\qq}{w}{\rr}}{\cret{\rr.u}}}\\
+  E(y,k) \;=\; & \bind{k'}{\qq.(k+1)}{\bind{v}{\mathit{loop}(\pp.y,\qq.k')}{\cret{\rr.v}}}
+\end{array}
+\]
+The conditional's receivers are $\{\qq,\rr\}$.  Role $\rr$ occurs in $T$, and
+it occurs in $E$ both as a participant of the recursive call and as the holder
+of the result.  The projected local definitions are
+\[
+\begin{array}{r@{\;\;}l}
+  \mathit{loop}_\pp(x) \;=\; & y\leftarrow 2\cdot x\,;\; b\leftarrow y>10\,;\\
+     & z\leftarrow\sendbr{\{\qq,\rr\}}{b}{(\nsend{\qq}{y}\,;\,\kw{ret}\;\bot)}{(v\leftarrow\mathit{loop}(y)\,;\,\kw{ret}\;\bot)}\,;\;\kw{ret}\;\bot\\[1ex]
+  \mathit{loop}_\qq(k) \;=\; & z\leftarrow\pp?\big((w\leftarrow\nrecv{\pp}\,;\,\nsend{\rr}{w}\,;\,\kw{ret}\;\bot),\\
+     & \hphantom{z\leftarrow\pp?\big(}(k'\leftarrow k+1\,;\,v\leftarrow\mathit{loop}(k')\,;\,\kw{ret}\;\bot)\big)\,;\;\kw{ret}\;\bot\\[1ex]
+  \mathit{loop}_\rr() \;=\; & z\leftarrow\recvbr{\pp}{(u\leftarrow\nrecv{\qq}\,;\,\kw{ret}\;u)}{(v\leftarrow\mathit{loop}()\,;\,\kw{ret}\;v)}\,;\;\kw{ret}\;z
+\end{array}
+\]
+The program calls the loop and uses its result:
+\[
+  C \;=\; \bind{\mathit{res}}{\mathit{loop}(\pp.3,\qq.0)}{\bind{m}{\rr.(\mathit{res}+1)}{\cret{\rr.m}}},
+\]
+which projects to $\mathit{res}\leftarrow\mathit{loop}(3)\,;\,\kw{ret}\;\bot$
+at $\pp$, $\mathit{res}\leftarrow\mathit{loop}(0)\,;\,\kw{ret}\;\bot$ at $\qq$,
+and $\mathit{res}\leftarrow\mathit{loop}()\,;\,m\leftarrow\mathit{res}+1\,;\,\kw{ret}\;m$
+at $\rr$.  Write $B(y,k)$ for the conditional
+$\cif{\pp}{b}{T(y)}{E(y,k)}$, $R(z)$ for the continuation
+$\bind{m}{\rr.(z+1)}{\cret{\rr.m}}$, and $L_2$ for the call
+$\mathit{loop}(\pp.6,\qq.k')$.  One run begins
+\begin{align*}
+  C &\lto{\tauat{\pp}} \rt{\{\qq,\rr\}}{C}{D_1}
+    && \text{\rn{Call}}\\
+  &\lto{\tauat{\pp}}\;\lto{\tauat{\pp}} \rt{\{\qq,\rr\}}{C}{(\bind{z}{B(6,0)[\ffalse/b]}{R(z)})}
+    && \text{\rn{Inside}, \rn{Local}, twice}\\
+  &\lto{\tauat{\qq}}\;\lto{\tauat{\rr}} \bind{z}{B(6,0)[\ffalse/b]}{R(z)}
+    && \text{\rn{Enter}, twice}\\
+  &\lto{\castlbl{\pp}{\ffalse}{\{\qq,\rr\}}} \bind{k'}{\qq.(0+1)}{\bind{v}{L_2}{R(v)}}
+    && \text{\rn{Cast}}\\
+  &\lto{\tauat{\pp}} \bind{k'}{\qq.(0+1)}{\rt{\{\qq,\rr\}}{K_2}{D_2}}
+    && \text{\rn{Delay}, \rn{Call}}
+\end{align*}
+where $D_1=\unfold{C}=\bind{y}{\pp.(2\cdot 3)}{\bind{b}{\pp.(y>10)}{\bind{z}{B(y,0)}{R(z)}}}$,
+$K_2=\bind{v}{L_2}{R(v)}$ and
+$D_2=\bind{y}{\pp.(2\cdot 6)}{\bind{b}{\pp.(y>10)}{\bind{z}{B(y,k')}{R(z)}}}$.
+
+Some points of this run:
+\begin{itemize}
+\item In the first three steps $\pp$ runs ahead inside the call while $\qq$
+  and $\rr$ have not entered.  The multicast is not enabled until both have,
+  because \rn{Inside} forbids a step involving a role in $S$.
+\item After the multicast the continuation $R$ follows the selected branch
+  directly.  The recursive call is not in tail position: its result $v$ flows
+  into $R(v)$.
+\item In the last step $\pp$ enters the recursive call by \rn{Delay}, past
+  $\qq$'s pending increment, while $\qq$'s argument $k'$ is still a variable
+  (Choice~\ref{cho:c3-novalue}).  When $\qq$ computes $k'=1$, \rn{Local}
+  substitutes $1$ into both $K_2$ and $D_2$.  Meanwhile $\rr$ may enter the
+  recursive call at any time.  In the network, $\rr$'s program at this point
+  is $v\leftarrow\mathit{loop}()\,;\,m\leftarrow v+1\,;\,\kw{ret}\;m$, which
+  is $\proj{K_2}{\rr}$.
+\end{itemize}
+In the second round, $2\cdot 6=12>10$, the multicast announces $\ttrue$, the
+value $12$ travels from $\pp$ to $\qq$ to $\rr$, and the run ends in
+$\cret{\rr.13}$.
+
+%======================================================================
+\chapter{Higher-Order Functions}
+\label{ch:ho}
+%======================================================================
+
+This chapter removes named functions altogether: signatures, definitions,
+declared role sets, and the local definitions of the network semantics.  In
+their place, functions become values, written as recursive
+$\lambda$-abstractions in the choreography:
+\[
+  \cfun{f}{x_1{:}T_1,\ldots,x_n{:}T_n}{\rho}{T}{C}.
+\]
+A function value is \emph{located at the set of roles} $\rho$ that run it.  It
+can be passed as an argument, returned as the result of a call or of a
+conditional, and bound by the continuation.  Located data is the special case
+of a value held at a single role.
+
+Two decisions keep the proofs close to those of Chapter~\ref{ch:fun}.  A
+function body is part of a value, and nothing evaluates under it: \rn{Delay}
+steps only under bind.  And an application carries its role set,
+$\rho.F(\vec\alpha)$, so $\roles{\cdot}$ never looks inside a function.
+Applications are then entered one role at a time as calls were in
+Chapter~\ref{ch:fun}, with the same runtime term and the same
+well-formedness invariant, and the proofs of Chapter~\ref{ch:fun} go through
+with a new unfolding lemma.
+
+\section{Design choices}
+\label{sec:c4-choices}
+
+\begin{choice}[Functions are syntax, located at role sets]\label{cho:c4-located}
+  A function value is a literal or a variable.  Its type
+  $\farr{\vec T}{\rho}{T}$ records the roles $\rho$ that run it, and a function
+  is held at exactly those roles: $\loc{\farr{\vec T}{\rho}{T}}=\rho$, just as
+  $\loc{\pp}=\{\pp\}$ for data held at $\pp$.  Every role in $\rho$ has its
+  own projection of every literal it mentions, so no code is ever sent.
+
+  \emph{Proof saved.}  Substituting a function for a variable commutes with
+  projection, because each role receives its own projection of the function
+  (Lemma~\ref{lem:c4-psubst}).  One locality lemma covers data and functions
+  alike: a role mentions a variable only if it belongs to the variable's
+  location set (Lemma~\ref{lem:c4-local}).  The \emph{ret} case of the bind
+  lemma becomes a split on whether $\rr$ is in that set, with the same proof
+  as before.
+\end{choice}
+
+\begin{choice}[Applications carry their role set]\label{cho:c4-annot}
+  An application is written $\rho.F(\vec\alpha)$.  Its set of roles is
+  $\rho$, read off the annotation and never off the body of $F$.  The
+  annotation agrees with $F$'s type, so a type checker can fill it in.
+
+  \emph{Proof saved.}  $\roles{\cdot}$ is stable under substitution, including
+  substitution of a function for a variable.  Receivers of conditionals,
+  erasure decisions and annotations on projected send-and-branches therefore
+  do not change as functions flow through a program.  The annotation does
+  the job that the declared role set $\rho_f$ did in Chapter~\ref{ch:fun}:
+  typing a literal at $\rho$ checks that its body's roles are included in
+  $\rho$, and no fixed point is needed.
+\end{choice}
+
+\begin{choice}[No evaluation under $\lambda$]\label{cho:c4-nolambda}
+  A function body does not step until some role enters an application of the
+  function.  \rn{Delay} steps only under bind, and no rule steps inside a
+  value.
+
+  \emph{Proof saved.}  Function bodies, like branches, remain source terms,
+  so the erasure and bind lemmas apply to them.  Choice~\ref{cho:c4-annot}
+  depends on this: since a body cannot have advanced, its roles are bounded
+  by its type.
+\end{choice}
+
+\begin{choice}[Applications are entered one role at a time]\label{cho:c4-enter}
+  The runtime term, the rules \rn{Call}, \rn{Enter} and \rn{Inside}, and the
+  well-formedness invariant are those of Chapter~\ref{ch:fun}, with a literal
+  in place of a function name and the annotation $\rho$ in place of $\rho_f$.
+
+  \emph{Proof saved.}  The proofs of Chapter~\ref{ch:fun} apply verbatim.
+  Apart from the lemmas restated for location sets (\S\ref{sec:c4-correct}),
+  only the unfolding lemma is re-proved (Lemma~\ref{lem:c4-unfold}).
+\end{choice}
+
+\begin{choice}[A literal need not be closed to be applied]\label{cho:c4-open}
+  Following Choice~\ref{cho:c3-novalue}, nothing in an application must be a
+  value.  In particular a literal may still have free variables, held at
+  other roles and bound by pending actions, when a role enters it.
+
+  \emph{Proof saved.}  Requiring literals to be closed would break
+  soundness: in Example~\ref{ex:c4-mk}, $\qq$'s projection of a literal is closed and
+  $\qq$ can enter it in the network while the literal still mentions a
+  variable held at $\pp$.  Without the requirement, a free variable held at
+  $\rr$ blocks $\rr$ through \rn{Delay}, as in
+  Remark~\ref{rem:c1-delay}, and a free variable held elsewhere does not appear
+  in $\rr$'s projection.
+\end{choice}
+
+\begin{choice}[Exact types]\label{cho:c4-exact}
+  There is no subtyping between function types with different role sets.
+
+  \emph{Proof saved.}  Projection keeps a parameter at $\rr$ exactly when
+  $\rr$ is in the location of its type, and an argument exactly when $\rr$ is
+  in the location of the argument.  With exact types the two agree, so at
+  every role the projected function and the projected call have the same
+  arity.  Subtyping on parameter types would break this.
+\end{choice}
+
+\begin{choice}[Functions are not communicated]\label{cho:c4-nocomm}
+  Only data atoms can be sent, and a function's location set is fixed by its
+  type.
+
+  \emph{Proof saved.}  A role learns which function a variable denotes only
+  through its own projection of the program, so the local language needs no representation of foreign code and the network
+  semantics needs no rule for it.
+\end{choice}
+
+\section{Syntax and typing}
+\label{sec:c4-syntax}
+
+\begin{definition}[Types]\label{def:c4-types}
+  Types are
+  \[
+    T \;::=\; \pp \;\mid\; \farr{T_1,\ldots,T_n}{\rho}{T}
+    \qquad
+    \loc{\pp}=\{\pp\}
+    \qquad
+    \loc{\farr{\vec T}{\rho}{T}}=\rho.
+  \]
+  A type is \emph{valid} if it is a role, or a function type
+  $\farr{\vec T}{\rho}{T}$ whose components are valid and whose result is held
+  by participants, $\loc{T}\subseteq\rho$.  Every valid type has a nonempty
+  location.  All types below are valid.
+\end{definition}
+
+\begin{definition}[Choreographies with functions]\label{def:c4-syntax}
+  \[
+  \begin{array}{r@{\;\;}c@{\;\;}l@{\qquad}l}
+    F & ::= & g & \text{function variable}\\
+      & \mid & \cfun{f}{x_1{:}T_1,\ldots,x_n{:}T_n}{\rho}{T}{C} & \text{recursive function literal}\\[1ex]
+    \alpha & ::= & \pp.a \;\mid\; \rho.F & \text{located argument}\\[1ex]
+    A & ::= & \pp.e \;\mid\; \com{\pp}{a}{\qq} \;\mid\; \cif{\pp}{a}{C_1}{C_2} & \text{as in Chapter~\ref{ch:cond}}\\
+      & \mid & \rho.F(\alpha_1,\ldots,\alpha_n) & \text{application, run at } \rho\\[1ex]
+    C & ::= & \cret{\alpha} \;\mid\; \bind{x}{A}{C} \;\mid\; \rt{S}{K}{D}\\[1ex]
+    K & ::= & \bind{x}{\rho.V(\vec\alpha)}{C} & V \text{ a literal}
+  \end{array}
+  \]
+  In a literal, $f$ (its own name) and $x_1,\ldots,x_n$ are bound in its body.
+  Literals are ranged over by $V$, and the type of
+  $V=\cfun{f}{\vec x{:}\vec T}{\rho}{T}{C_V}$ is $T_V=\farr{\vec T}{\rho}{T}$.
+  An argument has a location and a payload:
+  $\loc{\pp.a}=\{\pp\}$, $\loc{\rho.F}=\rho$, $\pay{\pp.a}=a$ and
+  $\pay{\rho.F}=F$.  Source choreographies contain no runtime term; branches
+  and function bodies are source choreographies.
+\end{definition}
+
+A single set of variables serves data and functions; typing tells them apart.
+Substitution $C[u/x]$ replaces a variable by an atom or by a function value,
+and goes into function bodies, avoiding capture.  Derived bind becomes
+$\mbind{(\cret{\alpha})}{x}{C}=C[\pay{\alpha}/x]$.
+
+\paragraph{Roles.}
+$\roles{\cret{\alpha}}=\loc{\alpha}$ and $\roles{\rho.F(\vec\alpha)}=\rho$;
+the other cases are as in Definition~\ref{def:c2-roles}.  The roles of a
+choreography never depend on the contents of a function value, so
+$\roles{C[u/x]}=\roles{C}$ for every substitution.
+
+\paragraph{Typing.}
+A context $\Gamma$ maps variables to types.  $\Gamma\vdash_\pp e$ now means
+$\Gamma(x)=\pp$ for every $x\in\fv(e)$, so local expressions and sent atoms
+mention only data.  The judgements are $\Gamma\vdash F:T$ for function values,
+$\Gamma\vdash\alpha:T$ for arguments, and $\Gamma\vdash A:T$ and $\Gamma\vdash
+C:T$ for actions and choreographies.
+\begin{mathpar}
+  \inferrule{\Gamma(g)=T}{\Gamma\vdash g:T}
+  \and
+  \inferrule{\Gamma,\,f{:}T_V,\,\vec x{:}\vec T\vdash C:T \\ \roles{C}\subseteq\rho}
+            {\Gamma\vdash\cfun{f}{\vec x{:}\vec T}{\rho}{T}{C}:T_V}
+  \\
+  \inferrule{\Gamma\vdash_\pp a}{\Gamma\vdash\pp.a:\pp}
+  \and
+  \inferrule{\Gamma\vdash F:T \\ \loc{T}=\rho}{\Gamma\vdash\rho.F:T}
+  \and
+  \inferrule{\Gamma\vdash\alpha:T}{\Gamma\vdash\cret{\alpha}:T}
+  \and
+  \inferrule{\Gamma\vdash F:\farr{T_1,\ldots,T_n}{\rho}{T} \\ \Gamma\vdash\alpha_i:T_i\ \text{for each } i}
+            {\Gamma\vdash\rho.F(\alpha_1,\ldots,\alpha_n):T}
+\end{mathpar}
+together with the rules of \S\ref{sec:c2-syntax} for bind, local computation,
+communication and conditionals, with types in place of roles, and the rule
+for runtime terms of \S\ref{sec:c3-syntax}.  A program is a choreography $C$
+with $\emptyset\vdash C:T$.
+
+The literal rule is where the annotation is checked, and it allows any
+$\rho$ that covers the body's roles.  Since $\roles{\cdot}$ uses the
+annotations of nested applications, including recursive ones, which carry
+$\rho$ itself, checking is a simple inclusion.
+
+\begin{lemma}[Results are held by participants]\label{lem:c4-locroles}
+  If $\Gamma\vdash A:T$ then $\loc{T}\subseteq\roles{A}$, and if $C$ is a source
+  choreography with $\Gamma\vdash C:T$, then $\loc{T}\subseteq\roles{C}$.
+\end{lemma}
+\begin{proof}
+  As for Lemma~\ref{lem:c2-locroles}.  For a return,
+  $\loc{T}=\loc{\alpha}=\roles{\cret{\alpha}}$.  For an application,
+  $\loc{T}\subseteq\rho$ because the function's type is valid.
+\end{proof}
+
+\section{Choreographic semantics}
+\label{sec:c4-sem}
+
+\begin{definition}[Unfolding]\label{def:c4-unfold}
+  For $K=\bind{x}{\rho.V(\vec\alpha)}{C}$ with
+  $V=\cfun{f}{\vec x{:}\vec T}{\rho}{T}{C_V}$,
+  \[
+    \unfold{K} \;=\; \mbind{C_V[V/f][\pay{\vec\alpha}/\vec x]}{x}{C}.
+  \]
+\end{definition}
+
+The semantics consists of \rn{Local}, \rn{Com}, \rn{Delay} and \rn{Cast},
+unchanged, and the rules of Figure~\ref{fig:c3-sem} with
+$K=\bind{x}{\rho.V(\vec\alpha)}{C}$ and $\rho$ in place of $\rho_f$:
+\begin{mathpar}
+  \inferrule*[right=\rn{Call}]
+    {K=\bind{x}{\rho.V(\vec\alpha)}{C} \\ \rr\in\rho}
+    {K \lto{\tauat{\rr}} \rt{\rho\setminus\{\rr\}}{K}{\unfold{K}}}
+\end{mathpar}
+together with \rn{Enter} and \rn{Inside} as before.  Labels are unchanged.
+\rn{Call} requires the function position to be a literal.  For a closed
+program this is no restriction.  A variable in function position is bound
+either by an enclosing literal, as its name or a parameter, and then the
+application cannot run before \rn{Call} substitutes the variable; or by a
+pending bind $\bind{g}{A}{\cdots}$, and then the application's role set is
+$\loc{T}\subseteq\roles{A}$, where $T$ is the type of $g$
+(Lemma~\ref{lem:c4-locroles}), so \rn{Delay} keeps all of its roles waiting
+until $A$ has fired.  The body of a literal is not touched by any rule until
+\rn{Call} unfolds it.
+
+A function returned from a call or a conditional is bound by the continuation
+like any other result.  For instance, in
+$\bind{g}{\cif{\pp}{b}{(\cret{\rho.V_1})}{(\cret{\rho.V_2})}}{\bind{y}{\rho.g(\vec\alpha)}{C}}$,
+every role of $\rho$ other than $\pp$ is a receiver of the conditional,
+because $\roles{\cret{\rho.V_i}}=\rho$, so every role that will run $g$
+learns which function it is.
+
+\section{Networks}
+\label{sec:c4-net}
+
+\begin{definition}[Networks with local functions]\label{def:c4-net}
+  Local programs gain function values and application:
+  \[
+  \begin{array}{r@{\;\;}c@{\;\;}l@{\qquad}l}
+    W & ::= & g \;\mid\; \nfun{f}{\vec y}{P} & \text{local function}\\
+    w & ::= & a \;\mid\; W & \text{local value or atom}\\
+    P & ::= & \kw{ret}\;w \;\mid\; \kw{ret}\;\bot \;\mid\; \pi\,P\\
+    \pi & ::= & \cdots \;\mid\; x\leftarrow W(\vec w)\,; & \text{application}
+  \end{array}
+  \]
+  Network bind is as in Definition~\ref{def:c2-net} with
+  $\mbind{(\kw{ret}\;w)}{x}{P}=P[w/x]$.  The network semantics consists of the
+  rules of \S\ref{sec:c2-net} and
+  \begin{mathpar}
+    \inferrule*[right=\rn{N-Call}]
+      {N(\rr)=x\leftarrow W(\vec w)\,;\,P \\ W=\nfun{f}{\vec y}{P_W} \\ |\vec y|=|\vec w|}
+      {N \lto{\tauat{\rr}} \upd{N}{\rr}{\mbind{P_W[W/f][\vec w/\vec y]}{x}{P}}}
+  \end{mathpar}
+\end{definition}
+
+There is no environment of local definitions.  Each role's program contains
+its own projection of every function it may run.
+
+\section{Endpoint projection}
+\label{sec:c4-epp}
+
+\begin{definition}[Projection with functions]\label{def:c4-epp}
+  Function values and arguments project as follows, where an argument is
+  projected only at roles in its location:
+  \[
+  \begin{array}{r@{\;\;=\;\;}l@{\qquad\qquad}r@{\;\;=\;\;}l}
+    \proj{g}{\rr} & g & \proj{\pp.a}{\rr} & a\\
+    \proj{\cfun{f}{\vec x{:}\vec T}{\rho}{T}{C}}{\rr} & \nfun{f}{\vec x|_\rr}{\proj{C}{\rr}} & \proj{\rho.F}{\rr} & \proj{F}{\rr}
+  \end{array}
+  \]
+  Here $\vec x|_\rr$ keeps the parameters $x_i$ with $\rr\in\loc{T_i}$, and for
+  arguments, $\vec\alpha|_\rr$ is the sequence of $\proj{\alpha_i}{\rr}$ for the
+  $\alpha_i$ with $\rr\in\loc{\alpha_i}$.  Returns and applications project as
+  \[
+  \proj{\cret{\alpha}}{\rr} =
+    \begin{cases}
+      \kw{ret}\;\proj{\alpha}{\rr} & \rr\in\loc{\alpha}\\
+      \kw{ret}\;\bot & \text{otherwise}
+    \end{cases}
+  \qquad
+  \pre{\rho.F(\vec\alpha)}{x}{\rr} =
+    \begin{cases}
+      x\leftarrow\proj{F}{\rr}(\vec\alpha|_\rr)\,; & \rr\in\rho\\
+      \varepsilon & \text{otherwise}
+    \end{cases}
+  \]
+  and all other cases, including runtime terms, are as in
+  Definitions~\ref{def:c2-epp} and~\ref{def:c3-epp}.  For substitutions we set
+  $\proj{a}{\rr}=a$ for atoms.
+\end{definition}
+
+A literal projects to a local function at every role, but it is only ever
+projected at roles in its location: as an argument or a result at $\rr\in\rho$,
+and in function position at a participant of the application.
+Lemma~\ref{lem:c1-prefix} still holds, now in the form: if
+$\pre{A}{x}{\rr}$ does not bind $x$, then $\rr\notin\loc{T}$, where $T$ is the
+type of $A$.  For an application, the prefix binds $x$ at every role of
+$\rho\supseteq\loc{T}$.
+
+\section{Correctness}
+\label{sec:c4-correct}
+
+The development of Chapter~\ref{ch:fun} carries over.  Four lemmas change
+their statements, because a variable may now be held at several roles
+(substitution, locality, and the two commutation lemmas), and the unfolding
+lemma is re-proved.  Everything else, including
+well-formedness (Definition~\ref{def:c3-wf}, with $S\subseteq\rho$ in
+condition~\ref{it:c3-wf-part}), the View and Entering lemmas, preservation of
+well-formedness, and both halves of the main theorem, is proved as in
+Chapter~\ref{ch:fun}.
+
+\begin{lemma}[Substitution]\label{lem:c4-subst}
+  If $\Gamma,x{:}T\vdash C:T'$, and either $T=\pp$ and $\Gamma\vdash_\pp a$ with
+  $u=a$, or $\Gamma\vdash F:T$ with $u=F$, then $\Gamma\vdash C[u/x]:T'$.  The
+  same holds for function values, arguments and actions.
+\end{lemma}
+\begin{proof}
+  By induction on the typing derivation.  For a data variable the argument is
+  that of Lemma~\ref{lem:c1-subst}.  For a function variable, the only rules
+  that inspect it are the variable rule, which is replaced by the derivation
+  of $\Gamma\vdash F:T$ after weakening, and the literal rule, whose side
+  condition $\roles{C}\subseteq\rho$ is unaffected because roles are stable
+  under substitution.
+\end{proof}
+
+\begin{lemma}[Projection is local]\label{lem:c4-local}
+  If $\Gamma\vdash C:T$, then every free variable $x$ of $\proj{C}{\rr}$
+  satisfies $\rr\in\loc{\Gamma(x)}$.  The same holds for $\proj{F}{\rr}$ when
+  $\Gamma\vdash F:T$ and $\rr\in\loc{T}$.
+\end{lemma}
+\begin{proof}
+  By simultaneous induction on derivations.
+  For a variable $g$ with $\rr\in\loc{\Gamma(g)}$, the claim is immediate.
+  For a literal $V$ with body $C_V$, the free variables of
+  $\proj{V}{\rr}$ are those of $\proj{C_V}{\rr}$ other than $f$ and
+  $\vec x|_\rr$.  By the induction hypothesis, those of $\proj{C_V}{\rr}$ are
+  held at $\rr$ under $\Gamma,f{:}T_V,\vec x{:}\vec T$.  Among the newly bound
+  variables, the ones held at $\rr$ are $f$, if $\rr\in\rho$, and exactly the
+  parameters in $\vec x|_\rr$, and these are bound by $\proj{V}{\rr}$.
+  For a return, $\proj{\alpha}{\rr}$ is taken only when
+  $\rr\in\loc{\alpha}$.  For an application at $\rr\in\rho$, $F$ has a type
+  with location $\rho\ni\rr$, and each projected argument has $\rr$ in its
+  location.  For a bind, the bound variable is handled by the form of
+  Lemma~\ref{lem:c1-prefix} stated above.  The remaining cases are as in
+  Lemma~\ref{lem:c1-local}.
+\end{proof}
+
+\begin{lemma}[Projection commutes with substitution]\label{lem:c4-psubst}
+  For a substitution that respects sorts, an atom for a data variable or a
+  function value for a function variable, we have
+  $\proj{C[u/x]}{\rr}=\proj{C}{\rr}[\proj{u}{\rr}/x]$, and likewise for
+  function values.  Hence, if $\Gamma,x{:}T\vdash C:T'$ and $\rr\notin\loc{T}$,
+  then $\proj{C[u/x]}{\rr}=\proj{C}{\rr}$.
+\end{lemma}
+\begin{proof}
+  By induction.  Every choice that projection makes depends on roles,
+  annotations, locations of arguments, or parameter types, and substitution
+  changes none of them.  The second claim follows by
+  Lemma~\ref{lem:c4-local}.
+\end{proof}
+
+\begin{lemma}[Projection commutes with bind]\label{lem:c4-pbind}
+  If $C_1$ is a source choreography, $\Gamma\vdash C_1:T'$ and
+  $\Gamma,x{:}T'\vdash C_2:T$, then
+  $\proj{\mbind{C_1}{x}{C_2}}{\rr}=\mbind{\proj{C_1}{\rr}}{x}{\proj{C_2}{\rr}}$.
+\end{lemma}
+\begin{proof}
+  As for Lemma~\ref{lem:c2-pbind}.  In the case $C_1=\cret{\alpha}$, the left
+  side is $\proj{C_2}{\rr}[\proj{\pay{\alpha}}{\rr}/x]$.  If
+  $\rr\in\loc{\alpha}$, the right side is
+  $\mbind{(\kw{ret}\;\proj{\alpha}{\rr})}{x}{\proj{C_2}{\rr}}$, which is the
+  same, since $\proj{\alpha}{\rr}=\proj{\pay{\alpha}}{\rr}$.  Otherwise
+  $\rr\notin\loc{\alpha}=\loc{T'}$, the right side is $\proj{C_2}{\rr}$, and
+  $x$ is not free in it by Lemma~\ref{lem:c4-local}.
+\end{proof}
+
+Erasure (Lemma~\ref{lem:c2-erase}) holds for source choreographies with the
+same proof, the return case now reading $\rr\notin\loc{\alpha}$.
+
+\begin{lemma}[Unfolding]\label{lem:c4-unfold}
+  Let $\Gamma\vdash K:T$ with $K=\bind{x}{\rho.V(\vec\alpha)}{C}$ and
+  $V=\cfun{f}{\vec x{:}\vec T}{\rho}{T'}{C_V}$.
+  \begin{enumerate}[label=(\roman*),nosep]
+  \item\label{it:c4-unf-in} If $\rr\in\rho$, then
+    $\proj{K}{\rr}=x\leftarrow\proj{V}{\rr}(\vec\alpha|_\rr)\,;\,\proj{C}{\rr}$,
+    and \rn{N-Call} replaces it by $\proj{\unfold{K}}{\rr}$.
+  \item\label{it:c4-unf-out} If $\rr\notin\rho$, then $\proj{\unfold{K}}{\rr}=\proj{K}{\rr}$.
+  \end{enumerate}
+\end{lemma}
+\begin{proof}
+  Write $C_V^\ast$ for $C_V[V/f][\pay{\vec\alpha}/\vec x]$.  By
+  Lemma~\ref{lem:c4-subst}, $\Gamma\vdash C_V^\ast:T'$, and by
+  Lemma~\ref{lem:c4-pbind},
+  $\proj{\unfold{K}}{\rr}=\mbind{\proj{C_V^\ast}{\rr}}{x}{\proj{C}{\rr}}$.
+
+  \ref{it:c4-unf-in} Since $\Gamma\vdash\alpha_i:T_i$, we have
+  $\loc{\alpha_i}=\loc{T_i}$, so $\vec\alpha|_\rr$ and $\vec x|_\rr$ have the
+  same length, and \rn{N-Call} fires on
+  $\proj{V}{\rr}=\nfun{f}{\vec x|_\rr}{\proj{C_V}{\rr}}$, producing
+  $\mbind{\proj{C_V}{\rr}[\proj{V}{\rr}/f][\vec\alpha|_\rr/\vec x|_\rr]}{x}{\proj{C}{\rr}}$.
+  By Lemma~\ref{lem:c4-psubst},
+  $\proj{C_V^\ast}{\rr}=\proj{C_V}{\rr}[\proj{V}{\rr}/f][\proj{\pay{\alpha_i}}{\rr}/x_i]_i$.
+  A parameter $x_i$ with $\rr\notin\loc{T_i}$ is not free in
+  $\proj{C_V}{\rr}$, by Lemma~\ref{lem:c4-local}, and for the others,
+  $\proj{\pay{\alpha_i}}{\rr}=\proj{\alpha_i}{\rr}$.  So the two agree.
+
+  \ref{it:c4-unf-out} The prefix of the application at $\rr$ is empty, and
+  $\rr\notin\rho\supseteq\roles{C_V}=\roles{C_V^\ast}$, so by erasure
+  \[
+    \proj{\unfold{K}}{\rr}=\mbind{(\kw{ret}\;\bot)}{x}{\proj{C}{\rr}}=\proj{C}{\rr}=\proj{K}{\rr}.\qedhere
+  \]
+\end{proof}
+
+Lemma~\ref{lem:c3-wfsubst} holds with the same proof; in part
+\ref{it:c3-ws-bind}, $\unfold{K}[u/y]=\unfold{K[u/y]}$ now also uses the fact
+that substitution commutes with the substitutions for $f$ and $\vec x$, since
+a literal may have free variables.  Network inversion replaces item (f)
+of Chapter~\ref{ch:fun} by
+\begin{enumerate}[label=(\alph*),start=6,nosep]
+\item if $\rr\in\roles{\ell}$ and $N(\rr)=x\leftarrow W(\vec w)\,;\,P$, then
+  $W$ is a literal $\nfun{f}{\vec y}{P_W}$ with $|\vec y|=|\vec w|$, the rule is
+  \rn{N-Call}, $\ell=\tauat{\rr}$, and
+  $N'=\upd{N}{\rr}{\mbind{P_W[W/f][\vec w/\vec y]}{x}{P}}$.
+\end{enumerate}
+In the soundness proof, a network step at a participant $\rr$ of an
+application $\rho.F(\vec\alpha)$ is therefore an \rn{N-Call} on
+$\proj{F}{\rr}$, which is a literal only if $F$ is, so \rn{Call} applies.  For
+an application whose function position is a variable, neither side can step
+at $\rr$.
+
+\begin{theorem}[EPP is lockstep]\label{thm:c4-epp}
+  Suppose $\Gamma\vdash C:T$ and $\WF(C)$.
+  \begin{enumerate}[label=(\arabic*),nosep]
+  \item If $C\lto{\ell}C'$, then $\projn{C}\lto{\ell}\projn{C'}$.
+  \item If $\projn{C}\lto{\ell}N$, then $C\lto{\ell}C'$ for some $C'$ with $N=\projn{C'}$.
+  \end{enumerate}
+  Consequently $\{(C,\projn{C})\mid\Gamma\vdash C:T\text{ and }\WF(C)\}$ is a
+  strong bisimulation with identical labels.
+\end{theorem}
+\begin{proof}
+  As for Theorem~\ref{thm:c3-epp} and Corollary~\ref{cor:c3-bisim}, with
+  Lemma~\ref{lem:c4-unfold} in place of Lemma~\ref{lem:c3-unfold}.
+\end{proof}
+
+\begin{theorem}[Deadlock freedom]\label{thm:c4-df}
+  Assume (L2), (L3), $\emptyset\vdash C:T$ and $\WF(C)$.  Every network
+  reachable from $\projn{C}$ is either terminated or can step.
+\end{theorem}
+\begin{proof}
+  As for Theorem~\ref{thm:c3-df}.  A closed application has a closed function
+  value in function position, which is a literal, and its role set $\rho$
+  contains the nonempty location of its result type, so \rn{Call} fires.
+\end{proof}
+
+Confluence holds on networks as in Remark~\ref{rem:c3-diamond},
+under the same assumptions.
+
+\section{Worked example}
+\label{sec:c4-example}
+
+\begin{example}[Returning a closure]\label{ex:c4-mk}
+  A function $\mathit{mk}$ takes a configuration held at $\pp$ and returns a
+  request handler run by $\pp$ and $\qq$.  The handler captures a value $c$
+  that $\pp$ computes from the configuration.  Let
+  $T_h=\farr{\pp}{\{\pp,\qq\}}{\qq}$ and
+  \[
+  \begin{array}{r@{\;\;}l}
+    H \;=\; & \cfun{h}{\mathit{req}{:}\pp}{\{\pp,\qq\}}{\qq}{\bind{z}{\pp.(\mathit{req}\cdot c)}{\bind{w}{\com{\pp}{z}{\qq}}{\cret{\qq.w}}}}\\[0.5ex]
+    M \;=\; & \cfun{\mathit{mk}}{\mathit{cfg}{:}\pp}{\{\pp,\qq\}}{T_h}{\bind{c}{\pp.(\mathit{cfg}+1)}{\cret{\{\pp,\qq\}.H}}}\\[0.5ex]
+    C \;=\; & \bind{g}{\{\pp,\qq\}.M(\pp.5)}{\bind{y}{\{\pp,\qq\}.g(\pp.2)}{\cret{\qq.y}}}
+  \end{array}
+  \]
+  The type of $M$ is valid because $\loc{T_h}=\{\pp,\qq\}$, and the result $g$
+  is held at both $\pp$ and $\qq$, so both can run it.  The projections of
+  the two literals are
+  \[
+  \begin{array}{r@{\;=\;}l@{\qquad}r@{\;=\;}l}
+    \proj{H}{\pp} & \nfun{h}{\mathit{req}}{z\leftarrow\mathit{req}\cdot c\,;\,\nsend{\qq}{z}\,;\,\kw{ret}\;\bot} &
+    \proj{H}{\qq} & \nfun{h}{}{w\leftarrow\nrecv{\pp}\,;\,\kw{ret}\;w}\\
+    \proj{M}{\pp} & \nfun{\mathit{mk}}{\mathit{cfg}}{c\leftarrow\mathit{cfg}+1\,;\,\kw{ret}\;\proj{H}{\pp}} &
+    \proj{M}{\qq} & \nfun{\mathit{mk}}{}{\kw{ret}\;\proj{H}{\qq}}
+  \end{array}
+  \]
+  and the program projects to
+  $g\leftarrow\proj{M}{\pp}(5)\,;\,y\leftarrow g(2)\,;\,\kw{ret}\;\bot$ at $\pp$
+  and $g\leftarrow\proj{M}{\qq}()\,;\,y\leftarrow g()\,;\,\kw{ret}\;y$ at $\qq$.
+  Role $\qq$ never sees $c$; its version of the handler comes from its own
+  projection of $M$.
+
+  Suppose $\pp$ enters $M$, $\qq$ enters $M$, and then $\qq$ enters the
+  handler, all before $\pp$ computes $c$:
+  \begin{align*}
+    C &\lto{\tauat{\pp}} \rt{\{\qq\}}{C}{(\bind{c}{\pp.(5+1)}{\bind{y}{\{\pp,\qq\}.H(\pp.2)}{\cret{\qq.y}}})}
+      && \text{\rn{Call}}\\
+      &\lto{\tauat{\qq}} \bind{c}{\pp.(5+1)}{\bind{y}{\{\pp,\qq\}.H(\pp.2)}{\cret{\qq.y}}}
+      && \text{\rn{Enter}}\\
+      &\lto{\tauat{\qq}} \bind{c}{\pp.(5+1)}{\rt{\{\pp\}}{K}{(\bind{z}{\pp.(2\cdot c)}{\bind{w}{\com{\pp}{z}{\qq}}{\cret{\qq.w}}})}}
+      && \text{\rn{Delay}, \rn{Call}}
+  \end{align*}
+  where $K=\bind{y}{\{\pp,\qq\}.H(\pp.2)}{\cret{\qq.y}}$.  The last step
+  applies the literal $H$ while it still has $c$ free, which
+  Choice~\ref{cho:c4-open} allows.  In the network, $\qq$'s program after
+  entering $\mathit{mk}$ is
+  $\mbind{(\kw{ret}\;\proj{H}{\qq})}{g}{(y\leftarrow g()\,;\,\kw{ret}\;y)}=y\leftarrow\proj{H}{\qq}()\,;\,\kw{ret}\;y$,
+  and $\proj{H}{\qq}$ is closed, so $\qq$ can enter it.  After the
+  step, $\qq$'s program is $w\leftarrow\nrecv{\pp}\,;\,\kw{ret}\;w$, which is
+  the projection of the last choreography at $\qq$.  The run continues with
+  $\pp$ computing $c=6$, which substitutes into both $K$ and the current state;
+  $\pp$ entering the handler; $\pp$ computing $z=12$; and the communication
+  $\com{\pp}{12}{\qq}$.  It ends in $\cret{\qq.12}$ after seven steps, as does
+  every maximal run.
+\end{example}
+
+\begin{remark}[Named functions as literals]
+  The loop of \S\ref{sec:c3-example} is written in this chapter as the literal
+  \[
+    \mathit{Loop}=\cfun{\mathit{loop}}{x{:}\pp,\,k{:}\qq}{\{\pp,\qq,\rr\}}{\rr}{C_{\mathit{loop}}},
+  \]
+  where the recursive call in $C_{\mathit{loop}}$ becomes
+  $\{\pp,\qq,\rr\}.\mathit{loop}(\pp.y,\qq.k')$, an application of the bound
+  self-name, and the program is
+  $\bind{\mathit{res}}{\{\pp,\qq,\rr\}.\mathit{Loop}(\pp.3,\qq.0)}{\cdots}$.
+  In general, a set of definitions from Chapter~\ref{ch:fun} in which every
+  cycle of calls is a self-call translates by replacing each call with the
+  corresponding literal.  Mutual recursion would need recursive bundles of
+  literals, which unfold in the same way and have the same proofs.
+\end{remark}
+
+%======================================================================
+\chapter*{Summary}
+\addcontentsline{toc}{chapter}{Summary}
+%======================================================================
+
+Each chapter added one feature and kept the correspondence between a
+choreography and its projection exact.  The table lists what each feature
+cost in the proofs.
+
+\begin{center}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{p{0.2\textwidth}p{0.36\textwidth}p{0.34\textwidth}}
+  \textbf{Chapter} & \textbf{New syntax and rules} & \textbf{New lemmas}\\\hline
+  \ref{ch:core} Core & $\bind{x}{A}{C}$; \rn{Local}, \rn{Com}, \rn{Delay} &
+    substitution, locality, commutation with substitution, frames,
+    inversion, network confluence\\
+  \ref{ch:cond} Conditionals & conditional action; \rn{Cast}, \rn{N-Cast} &
+    results held by participants; erasure; typing of bind; projection
+    commutes with bind\\
+  \ref{ch:fun} Functions & calls; runtime term; \rn{Call}, \rn{Enter}, \rn{Inside}, \rn{N-Call} &
+    well-formedness and its preservation; substitution and well-formedness;
+    unfolding; view; entering\\
+  \ref{ch:ho} Higher-order & literals located at role sets; application $\rho.F(\vec\alpha)$ &
+    substitution, locality and both commutation lemmas restated for
+    location sets; unfolding re-proved
+\end{tabular}
+\end{center}
+
+Some decisions come back in every chapter.  A role that is not involved in
+an action gets nothing for it, and with the free monad's normal form this
+makes one action one step at each level and the frame lemmas trivial.  Only
+what appears in a label has to be a value.  Communication and multicast need
+values because their labels carry them, local computation needs a closed
+expression because it evaluates it, and entering a call needs nothing; \rn{Delay}
+alone then blocks variables bound by pending actions.  Finally, branches and
+function bodies never step before they are selected or entered.  They stay
+source syntax, so roles, receivers and annotations are stable, bind is
+applied only to source terms, and the one runtime term needs only one
+invariant.
+
+\begin{thebibliography}{1}
+\bibitem{cc}
+Lu\'is Cruz-Filipe and Fabrizio Montesi.
+\newblock A core model for choreographic programming.
+\newblock \emph{Theoretical Computer Science}, 802:38--66, 2020.
+\end{thebibliography}
+
+\end{document}
