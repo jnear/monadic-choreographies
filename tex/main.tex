@@ -5,6 +5,7 @@
 \usepackage{stmaryrd}
 \usepackage{mathpartir}
 \usepackage{enumitem}
+\usepackage{array}
 \usepackage{xcolor}
 \usepackage[colorlinks=true,linkcolor=blue!55!black,citecolor=blue!55!black,urlcolor=blue!55!black]{hyperref}
 
@@ -70,6 +71,11 @@
 \newcommand{\Defs}{\mathcal{D}}
 \newcommand{\farr}[3]{(#1) \xrightarrow{#2} #3}
 \newcommand{\cfun}[5]{\kw{fun}\;#1(#2) \xrightarrow{#3} #4.\;#5}
+\newcommand{\clam}[3]{\lambda #1{:}#2.\;#3}
+\newcommand{\cfix}[3]{\kw{fix}\;#1{:}#2.\;#3}
+\newcommand{\nlam}[2]{\lambda(#1).\;#2}
+\newcommand{\nfix}[2]{\kw{fix}\;#1.\;#2}
+\newcommand{\unroll}[1]{\mathrm{unroll}(#1)}
 
 %%% Proof layout
 \newcommand{\rn}[1]{{\normalfont\scshape #1}}
@@ -84,10 +90,12 @@
 \begin{abstract}
   We develop four choreographic languages of increasing expressiveness:
   local computation and communication; conditionals; first-order recursive
-  functions; and first-class, higher-order functions.  All four are written
+  functions; and first-class, higher-order functions.  A fifth language pares
+  the last down to a minimal core, with one sort of values, single-argument
+  anonymous functions and a fixpoint.  All five are written
   in the normal form of a free monad, as a sequence of actions $\bind{x}{A}{C}$
-  ending in a return, and each feature is added as a new kind of action whose
-  result the continuation binds.  For each language, endpoint projection is a
+  ending in a return, and each of the first four adds its feature as a new
+  kind of action whose result the continuation binds.  For each language, endpoint projection is a
   strong bisimulation with identical labels whose network side is the
   projection of the choreography itself: one choreography step matches one
   network step, with no pruning relation, weak steps, or equivalence up to the
@@ -117,7 +125,7 @@ relation, which discards branches that can no longer be taken, or up to the
 unfolding of procedure calls.  Each of these gaps needs its own auxiliary
 relation and lemmas about it, and the resulting proofs are hard to check.
 
-This document develops four languages without such gaps.  For each of them
+This document develops five languages without such gaps.  For each of them
 the relation
 \[
   \{\,(C, \projn{C}) \mid C \text{ is well-typed (and, from Chapter~\ref{ch:fun} on, well-formed)}\,\}
@@ -144,7 +152,9 @@ continuation binds, so the language gains conditionals and functions that
 return values, and functions that are passed as arguments and returned as
 results.  The bind and the \rn{Delay} rule, which lets independent actions run
 out of order, stay the same throughout; Chapter~\ref{ch:fun} adds a companion
-rule, \rn{Inside}, for calls in progress.
+rule, \rn{Inside}, for calls in progress.  Chapter~\ref{ch:min} adds no
+action.  It keeps those of Chapter~\ref{ch:ho} and removes everything they
+do not need.
 
 \paragraph{Proof architecture.}
 Every chapter proves the same theorem with the same skeleton.
@@ -169,7 +179,10 @@ selections and no merging.  Chapter~\ref{ch:fun} adds first-order recursive
 functions.  Calls are entered one role at a time, which requires one runtime
 term and a well-formedness invariant.  Chapter~\ref{ch:ho} removes named
 functions altogether and replaces them with first-class recursive functions,
-each located at the set of roles that run it.
+each located at the set of roles that run it.  Chapter~\ref{ch:min} reduces
+that language to a minimal core: one sort of values, functions of one
+argument without names, and a fixpoint that is unrolled when a role enters an
+application, so that recursion costs no step of its own.
 
 %======================================================================
 \chapter{Core Choreographies}
@@ -1391,7 +1404,8 @@ action.
 
 At the network level each participant of a function runs its own local
 version of it and enters a call independently of the others.  We follow the
-approach of making every such entry a visible step at both levels and
+approach~\cite{montesi-book,cmp-jar23,ozone24} of making every such entry a
+visible step at both levels and
 recording, in the choreography, a call that some participants have entered
 and others have not, with a runtime term.  In the monadic setting the
 runtime term must also absorb the continuation of the call
@@ -2614,12 +2628,800 @@ under the same assumptions.
 \end{remark}
 
 %======================================================================
+\chapter{A Minimal Higher-Order Language}
+\label{ch:min}
+%======================================================================
+
+This chapter pares the language of Chapter~\ref{ch:ho} down to a minimal
+core.  Functions take a single argument and have no name, and recursion
+comes back through a fixpoint.  The syntax has three sorts, values, actions
+and choreographies:
+\[
+\begin{array}{r@{\;\;}c@{\;\;}l}
+  u & ::= & x \;\mid\; v \;\mid\; \clam{x}{T}{C} \;\mid\; \cfix{f}{T}{\clam{x}{T'}{C}}\\
+  A & ::= & \pp.e \;\mid\; \com{\pp}{u}{\qq} \;\mid\; \cif{\pp}{u}{C_1}{C_2} \;\mid\; \rho.u(\sigma.u')\\
+  C & ::= & \cret{\rho.u} \;\mid\; \bind{x}{A}{C}
+\end{array}
+\]
+together with the runtime term of Chapter~\ref{ch:fun}.  Its constructs are
+local computation, communication, the conditional, abstraction, the
+fixpoint, application, bind and return.  The distinctions that
+Chapter~\ref{ch:ho} drew in the grammar, between atoms and function values,
+between literals and other values, and between calls and other
+choreographies, are drawn here by typing or by the well-formedness
+invariant.  The proofs are those of Chapter~\ref{ch:ho} with one parameter
+in place of a vector, and the new lemmas, on unique types, canonical forms
+and unrolling, are a few lines each.
+
+\section{Design choices}
+\label{sec:c5-choices}
+
+\begin{choice}[One sort of values]\label{cho:c5-values}
+  Atoms and function values form a single sort $u$: a variable, a value $v$
+  of the local language, an abstraction, or a fixpoint.  Typing tells data
+  from functions, as it already did for variables in Chapter~\ref{ch:ho}.
+
+  \emph{Proof saved.}  Substitution, projection and their commutation have
+  one case for each form of value, instead of one family of cases for atoms
+  and another for function values.  Substitution into a local expression is
+  still only defined for atoms, but a well-typed substitution replaces a
+  variable that occurs in a local expression by an atom
+  (Lemma~\ref{lem:c5-subst}), and Chapter~\ref{ch:ho} already restricted
+  itself to such substitutions (Lemma~\ref{lem:c4-psubst}).  The cost is a
+  canonical-forms lemma (Lemma~\ref{lem:c5-canon}), which recovers the
+  shapes of closed values that the grammar used to provide.
+\end{choice}
+
+\begin{choice}[Every value is located where it is used]\label{cho:c5-located}
+  A value occurs in a choreography only as a \emph{located value} $\rho.u$:
+  as the result of a return, $\cret{\rho.u}$; as the payload of a
+  communication or the guard of a conditional, $\pp.u$, which stands for
+  $\{\pp\}.u$; and as the function and the argument of an application,
+  $\rho.u(\sigma.u')$.  Typing requires $\rho$ to be the location of the
+  type of $u$.
+
+  \emph{Proof saved.}  A located value projects, at the roles of its
+  location, to the projection of its value, by one equation for data and
+  functions alike.  The application $\rho.F(\vec\alpha)$ of
+  Chapter~\ref{ch:ho} was already a located function applied to located
+  arguments, so no annotation is added.  Since payloads and guards must have
+  a role type, functions are not communicated (Choice~\ref{cho:c4-nocomm})
+  by typing rather than by syntax.
+\end{choice}
+
+\begin{choice}[An abstraction has no location of its own]\label{cho:c5-lambda}
+  An abstraction $\clam{x}{T}{C}$ carries no name, no role set and no result
+  type.  Like a value $v$ of the local language, it gets its location from
+  the located value in which it occurs, or, in a fixpoint, from the type of
+  the fixpoint.  The result type is that of the body.
+
+  \emph{Proof saved.}  Projection, unrolling and $\roles{\cdot}$ never
+  consulted the role set or the result type written on a literal; only
+  typing did, and typing now reads them off the context and the body.  The
+  only change is that an abstraction alone, like a value $v$, has many
+  types, while a located value still has exactly one
+  (Lemma~\ref{lem:c5-unique}).
+\end{choice}
+
+\begin{choice}[One argument]\label{cho:c5-one}
+  Every function takes exactly one located argument, and functions of
+  several arguments are curried.
+
+  \emph{Proof saved.}  Parameter and argument vectors, and their
+  restrictions to a role, disappear.  At each role a projected abstraction
+  has one parameter or none, a projected application has one argument or
+  none, and exact types (Choice~\ref{cho:c4-exact}) make the two agree.  The
+  cost is in steps, not in proofs.  Applying a curried function to $n$
+  arguments takes $n$ applications, each entered by every role of $\rho$,
+  because the type of a function that returns a closure is valid only if
+  the closure's location is included in its own: every role that will run
+  the closure takes part in creating it (\S\ref{sec:c5-derived}).
+\end{choice}
+
+\begin{choice}[Recursion by a fixpoint value]\label{cho:c5-fix}
+  Abstractions are not recursive.  A recursive function is a fixpoint
+  $\cfix{f}{T}{V}$, a value in which $f$ is bound in the abstraction $V$.
+  The \emph{fix rule} unrolls it by substituting the fixpoint for $f$
+  (Definition~\ref{def:c5-unfold}).  The body of a fixpoint is always an
+  abstraction.
+
+  \emph{Proof saved.}  Unrolling substitutes a value for a variable, so
+  projection commutes with it by Lemma~\ref{lem:c5-psubst}, and the
+  projection of a fixpoint unrolls in the network to the projection of its
+  unrolling (Lemma~\ref{lem:c5-unroll}).  Since the body is an abstraction,
+  one unrolling yields an abstraction, so every closed function value
+  unrolls to an abstraction and every closed application can be entered.
+  Fixpoints of arbitrary values would admit $\cfix{f}{T}{f}$, which is
+  closed and well-typed but never unrolls to an abstraction, and whose
+  applications would be stuck at both levels.
+\end{choice}
+
+\begin{choice}[Unrolling is part of entering]\label{cho:c5-enter}
+  The fix rule is not a step.  The first role to enter an application of a
+  fixpoint unrolls it and substitutes the argument in the same step,
+  \rn{Call}, and in the network every participant does the same in its own
+  \rn{N-Call}.
+
+  \emph{Proof saved.}  A separate unrolling step would be taken by each
+  participant on its own in the network, so the choreography would have to
+  record which participants have unrolled, with a second round of per-role
+  entries for every recursive call.  As part of entering, unrolling adds no
+  step, and the runtime term, the well-formedness invariant, and the View and
+  Entering lemmas of Chapter~\ref{ch:fun} are unchanged.
+\end{choice}
+
+\begin{choice}[The shape of a runtime term is an invariant]\label{cho:c5-rt}
+  The first component of a runtime term $\rt{S}{K}{D}$ is any choreography.
+  Well-formedness, not a syntactic sort, requires it to be an application of
+  a literal followed by its continuation.
+
+  \emph{Proof saved.}  No rule inspects $K$ except through $\unfold{K}$, and
+  only well-formed terms are related to networks, so a sort for $K$ would
+  repeat a condition that well-formedness states anyway.  Substitution maps
+  a literal to a literal, so the condition is preserved.
+\end{choice}
+
+Choices~\ref{cho:c4-located}--\ref{cho:c4-nocomm} carry over: functions are
+located at role sets, applications carry their role set, nothing evaluates
+under an abstraction, applications are entered one role at a time, a literal
+need not be closed to be applied, types are exact, and functions are not
+communicated.
+
+\section{Syntax and typing}
+\label{sec:c5-syntax}
+
+\begin{definition}[Types]\label{def:c5-types}
+  Types are
+  \[
+    T \;::=\; \pp \;\mid\; \farr{T_1}{\rho}{T_2}
+    \qquad
+    \loc{\pp}=\{\pp\}
+    \qquad
+    \loc{\farr{T_1}{\rho}{T_2}}=\rho.
+  \]
+  A type is \emph{valid} if it is a role, or a function type
+  $\farr{T_1}{\rho}{T_2}$ whose components are valid and whose result is
+  held by participants, $\loc{T_2}\subseteq\rho$.  All types below are
+  valid.
+\end{definition}
+
+\begin{definition}[Minimal choreographies]\label{def:c5-syntax}
+  \[
+  \begin{array}{r@{\;\;}c@{\;\;}l@{\qquad}l}
+    u & ::= & x & \text{variable}\\
+      & \mid & v & \text{value of the local language}\\
+      & \mid & \clam{x}{T}{C} & \text{abstraction}\\
+      & \mid & \cfix{f}{T}{\clam{x}{T'}{C}} & \text{fixpoint}\\[1ex]
+    A & ::= & \pp.e & \text{local computation at } \pp\\
+      & \mid & \com{\pp}{u}{\qq} & \text{communication from $\pp$ to $\qq$, with } \pp\neq\qq\\
+      & \mid & \cif{\pp}{u}{C_1}{C_2} & \text{conditional on a guard held at } \pp\\
+      & \mid & \rho.u(\alpha) & \text{application, run at } \rho\\[1ex]
+    C & ::= & \cret{\alpha} & \text{return}\\
+      & \mid & \bind{x}{A}{C} & \text{bind}\\
+      & \mid & \rt{S}{K}{D} & \text{runtime term, } \emptyset\neq S\subseteq\Roles
+  \end{array}
+  \]
+  Here $\alpha$ stands for a \emph{located value} $\rho.u$, with
+  $\loc{\alpha}=\rho$ and $\pay{\alpha}=u$; we write $\pp.u$ for
+  $\{\pp\}.u$; and $K$ and $D$ range over choreographies.  The variable $x$
+  is bound in $C$ by an abstraction and by a bind, and $f$ is bound in the
+  abstraction of a fixpoint.  Abstractions and fixpoints are
+  \emph{literals}; $V$ ranges over abstractions.  A choreography is a
+  \emph{source} choreography if it contains no runtime term, and branches
+  and bodies of literals are source choreographies.
+\end{definition}
+
+Actions remain a sort of their own.  A choreography is the free monad's
+normal form over them, and $\roles{\cdot}$, projection prefixes and
+\rn{Delay} are all defined by cases on the action.  Substitution $C[u/x]$
+replaces a variable by a value, avoiding capture, including inside the
+bodies of literals.  Inside a local expression it is the substitution of the
+local language, which takes an atom, so $C[u/x]$ is undefined if $u$ is a
+literal and $x$ occurs free in a local expression of $C$.  Well-typed
+substitutions never do this (Lemma~\ref{lem:c5-subst}).
+
+\paragraph{Roles.}
+On source terms,
+\[
+\begin{array}{r@{\;\;=\;\;}l@{\qquad}r@{\;\;=\;\;}l}
+  \roles{\cret{\alpha}} & \loc{\alpha} &
+  \roles{\bind{x}{A}{C}} & \roles{A}\cup\roles{C}\\
+  \roles{\pp.e} & \{\pp\} &
+  \roles{\com{\pp}{u}{\qq}} & \{\pp,\qq\}\\
+  \roles{\rho.u(\alpha)} & \rho &
+  \roles{\cif{\pp}{u}{C_1}{C_2}} & \{\pp\}\cup\roles{C_1}\cup\roles{C_2}
+\end{array}
+\]
+and $\rcv{\cif{\pp}{u}{C_1}{C_2}}=(\roles{C_1}\cup\roles{C_2})\setminus\{\pp\}$.
+Roles never look inside a value, so $\roles{C[u/x]}=\roles{C}$.
+
+\paragraph{Typing.}
+A context $\Gamma$ maps variables to types, and $\Gamma\vdash_\pp e$ means
+$\Gamma(x)=\pp$ for every $x\in\fv(e)$.  The judgements are $\Gamma\vdash
+u:T$ for values, $\Gamma\vdash\alpha:T$ for located values, and $\Gamma\vdash
+A:T$ and $\Gamma\vdash C:T$ for actions and choreographies, given in
+Figure~\ref{fig:c5-typing}.  A program is a choreography $C$ with
+$\emptyset\vdash C:T$.
+
+\begin{figure}[t]
+\begin{mathpar}
+  \inferrule{ }{\Gamma\vdash x:\Gamma(x)}
+  \and
+  \inferrule{ }{\Gamma\vdash v:\pp}
+  \and
+  \inferrule{\Gamma,x{:}T_1\vdash C:T_2 \\ \roles{C}\subseteq\rho}
+            {\Gamma\vdash\clam{x}{T_1}{C}:\farr{T_1}{\rho}{T_2}}
+  \and
+  \inferrule{\Gamma,f{:}T\vdash V:T}
+            {\Gamma\vdash\cfix{f}{T}{V}:T}
+  \\
+  \inferrule{\Gamma\vdash u:T \\ \loc{T}=\rho}{\Gamma\vdash\rho.u:T}
+  \and
+  \inferrule{\Gamma\vdash\alpha:T}{\Gamma\vdash\cret{\alpha}:T}
+  \and
+  \inferrule{\Gamma\vdash A:T' \\ \Gamma,x{:}T'\vdash C:T}{\Gamma\vdash\bind{x}{A}{C}:T}
+  \\
+  \inferrule{\Gamma\vdash_\pp e}{\Gamma\vdash\pp.e:\pp}
+  \and
+  \inferrule{\pp\neq\qq \\ \Gamma\vdash\pp.u:\pp}{\Gamma\vdash\com{\pp}{u}{\qq}:\qq}
+  \and
+  \inferrule{\Gamma\vdash\pp.u:\pp \\ \Gamma\vdash C_1:T \\ \Gamma\vdash C_2:T}
+            {\Gamma\vdash\cif{\pp}{u}{C_1}{C_2}:T}
+  \\
+  \inferrule{\Gamma\vdash\rho.u:\farr{T_1}{\rho}{T_2} \\ \Gamma\vdash\alpha:T_1}
+            {\Gamma\vdash\rho.u(\alpha):T_2}
+  \and
+  \inferrule{\Gamma\vdash K:T \\ \Gamma\vdash D:T}{\Gamma\vdash\rt{S}{K}{D}:T}
+\end{mathpar}
+\caption{Typing of minimal choreographies.}
+\label{fig:c5-typing}
+\end{figure}
+
+A value of the local language has every role type, and an abstraction has a
+function type for every $\rho$ that covers the roles of its body; the
+located value around them selects one.  So $\Gamma\vdash\pp.u:\pp$ holds
+exactly when $u$ is an atom with $\Gamma\vdash_\pp u$, and the payloads and
+guards of Chapter~\ref{ch:cond} are recovered by typing.
+
+\begin{lemma}[Unique types]\label{lem:c5-unique}
+  A located value, an action or a choreography has at most one type under
+  a given $\Gamma$.
+\end{lemma}
+\begin{proof}
+  By induction.  The type of $\rho.v$ is the role $\pp$ with
+  $\{\pp\}=\rho$, and that of $\rho.x$ is $\Gamma(x)$.  The type of
+  $\rho.\clam{x}{T_1}{C}$ is $\farr{T_1}{\rho}{T_2}$, where $T_2$ is the
+  unique type of $C$, and that of $\rho.\cfix{f}{T}{V}$ is $T$.  The other
+  cases are as in Chapter~\ref{ch:cond}.
+\end{proof}
+
+As before, $\loc{A}$ denotes the location of the type of $A$.
+
+\begin{lemma}[Results are held by participants]\label{lem:c5-locroles}
+  If $\Gamma\vdash A:T$ then $\loc{T}\subseteq\roles{A}$, and if $C$ is a
+  source choreography with $\Gamma\vdash C:T$, then
+  $\loc{T}\subseteq\roles{C}$.
+\end{lemma}
+\begin{proof}
+  As for Lemma~\ref{lem:c4-locroles}.  For a return,
+  $\loc{T}=\loc{\alpha}=\roles{\cret{\alpha}}$, and for an application,
+  $\loc{T_2}\subseteq\rho$ because the function's type is valid.
+\end{proof}
+
+\begin{lemma}[Canonical forms]\label{lem:c5-canon}
+  Let $u$ be closed with $\Gamma\vdash u:T$.  If $T$ is a role, then $u$ is
+  a value of the local language.  If $T$ is a function type, then $u$ is a
+  literal.
+\end{lemma}
+\begin{proof}
+  A closed value is not a variable.  Values of the local language have only
+  role types, and literals only function types.
+\end{proof}
+
+\section{Choreographic semantics}
+\label{sec:c5-sem}
+
+\begin{definition}[Unrolling and unfolding]\label{def:c5-unfold}
+  Unrolling maps a literal to an abstraction:
+  \[
+    \unroll{V} = V
+    \qquad
+    \unroll{\cfix{f}{T}{V}} = V[\cfix{f}{T}{V}/f].
+  \]
+  The second equation is the \emph{fix rule}.  For
+  $K=\bind{x}{\rho.u(\alpha)}{C}$ with $u$ a literal and
+  $\unroll{u}=\clam{y}{T}{C_u}$, its bound variables renamed apart,
+  \[
+    \unfold{K} \;=\; \mbind{C_u[\pay{\alpha}/y]}{x}{C}.
+  \]
+\end{definition}
+
+Derived bind is that of Definition~\ref{def:c1-bind}, with
+$\mbind{(\cret{\alpha})}{x}{C}=C[\pay{\alpha}/x]$.  Labels are those of
+Chapter~\ref{ch:cond}:
+\[
+  \ell \;::=\; \tauat{\pp} \;\mid\; \com{\pp}{v}{\qq} \;\mid\; \castlbl{\pp}{v}{Q}.
+\]
+
+\begin{figure}[t]
+\begin{mathpar}
+  \inferrule*[right=\rn{Local}]
+    {e\Downarrow v}
+    {\bind{x}{\pp.e}{C} \lto{\tauat{\pp}} C[v/x]}
+  \and
+  \inferrule*[right=\rn{Com}]
+    { }
+    {\bind{x}{\com{\pp}{v}{\qq}}{C} \lto{\com{\pp}{v}{\qq}} C[v/x]}
+  \\
+  \inferrule*[right=\rn{Cast}]
+    {v\in\{\ttrue,\ffalse\} \\ A=\cif{\pp}{v}{C_\ttrue}{C_\ffalse} \\ Q=\rcv{A}}
+    {\bind{x}{A}{C} \lto{\castlbl{\pp}{v}{Q}} \mbind{C_v}{x}{C}}
+  \and
+  \inferrule*[right=\rn{Delay}]
+    {C\lto{\ell}C' \\ \roles{\ell}\cap\roles{A}=\emptyset}
+    {\bind{x}{A}{C} \lto{\ell} \bind{x}{A}{C'}}
+  \\
+  \inferrule*[right=\rn{Call}]
+    {K=\bind{x}{\rho.u(\alpha)}{C} \\ u \text{ a literal} \\ \rr\in\rho}
+    {K \lto{\tauat{\rr}} \rt{\rho\setminus\{\rr\}}{K}{\unfold{K}}}
+  \and
+  \inferrule*[right=\rn{Enter}]
+    {\rr\in S}
+    {\rt{S}{K}{D} \lto{\tauat{\rr}} \rt{S\setminus\{\rr\}}{K}{D}}
+  \and
+  \inferrule*[right=\rn{Inside}]
+    {D\lto{\ell}D' \\ S\cap\roles{\ell}=\emptyset}
+    {\rt{S}{K}{D} \lto{\ell} \rt{S}{K}{D'}}
+\end{mathpar}
+\caption{Semantics of minimal choreographies.  Throughout, $v$ is a value of
+  the local language, and a target $\rt{\emptyset}{K}{D}$ stands for $D$.}
+\label{fig:c5-sem}
+\end{figure}
+
+The semantics is given in Figure~\ref{fig:c5-sem}.  These are the rules of
+Chapters~\ref{ch:core} to~\ref{ch:fun}, with \rn{Call} as in
+Chapter~\ref{ch:ho}.  \rn{Com} fires only when the payload is a value of the
+local language, \rn{Cast} only when the guard is a boolean, and \rn{Call}
+only when the function is a literal.  For well-typed terms, a closed payload
+or function always has the required shape (Lemma~\ref{lem:c5-canon}).  A
+variable in function position is handled as in \S\ref{sec:c4-sem}: it is
+bound by an enclosing literal, or by a pending bind whose action involves
+every role of the application.
+
+\section{Networks}
+\label{sec:c5-net}
+
+\begin{definition}[Minimal networks]\label{def:c5-net}
+  Local values, programs and prefixes are
+  \[
+  \begin{array}{r@{\;\;}c@{\;\;}l@{\qquad}l}
+    w & ::= & x \;\mid\; v \;\mid\; \nlam{\vec y}{P} \;\mid\; \nfix{f}{\nlam{\vec y}{P}} & \text{with } |\vec y|\le 1\\
+    P & ::= & \kw{ret}\;w \;\mid\; \kw{ret}\;\bot \;\mid\; \pi\,P\\
+    \pi & ::= & x\leftarrow e\,; \;\mid\; \nsend{\qq}{w}\,; \;\mid\; x\leftarrow\nrecv{\pp}\,;\\
+        & \mid & x\leftarrow\sendbr{Q}{w}{P_1}{P_2}\,; \;\mid\; x\leftarrow\recvbr{\pp}{P_1}{P_2}\,;\\
+        & \mid & x\leftarrow w(\vec w)\,; & \text{with } |\vec w|\le 1
+  \end{array}
+  \]
+  As in choreographies, the last two forms of $w$ are \emph{literals}, $W$
+  ranges over local abstractions, $\unroll{W}=W$, and
+  $\unroll{\nfix{f}{W}}=W[\nfix{f}{W}/f]$.  Network bind is
+  \[
+  \mbind{(\kw{ret}\;w)}{x}{P} = P[w/x]
+  \qquad
+  \mbind{(\kw{ret}\;\bot)}{x}{P} = P
+  \qquad
+  \mbind{(\pi\,P_1)}{x}{P_2} = \pi\,(\mbind{P_1}{x}{P_2})
+  \]
+  where, in the last equation, the variable bound by $\pi$ is renamed apart
+  from $\fv(P_2)\cup\{x\}$.
+\end{definition}
+
+\begin{figure}[t]
+\begin{mathpar}
+  \inferrule*[right=\rn{N-Local}]
+    {N(\pp) = x\leftarrow e\,;\,P \\ e\Downarrow v}
+    {N \lto{\tauat{\pp}} \upd{N}{\pp}{P[v/x]}}
+  \and
+  \inferrule*[right=\rn{N-Com}]
+    {N(\pp) = \nsend{\qq}{v}\,;\,P \\ N(\qq) = x\leftarrow\nrecv{\pp}\,;\,P'}
+    {N \lto{\com{\pp}{v}{\qq}} N[\pp\mapsto P,\ \qq\mapsto P'[v/x]]}
+  \\
+  \inferrule*[right=\rn{N-Cast}]
+    {N(\pp) = x\leftarrow\sendbr{Q}{v}{P_\ttrue}{P_\ffalse}\,;\,P \\
+     v\in\{\ttrue,\ffalse\} \\\\
+     N(\qq) = x_\qq\leftarrow\recvbr{\pp}{P^\qq_\ttrue}{P^\qq_\ffalse}\,;\,P^\qq \text{ for every } \qq\in Q}
+    {N \lto{\castlbl{\pp}{v}{Q}}
+     N[\pp\mapsto\mbind{P_v}{x}{P}][\qq\mapsto\mbind{P^\qq_v}{x_\qq}{P^\qq}]_{\qq\in Q}}
+  \\
+  \inferrule*[right=\rn{N-Call}]
+    {N(\rr)=x\leftarrow w(\vec w)\,;\,P \\ w \text{ a literal} \\ \unroll{w}=\nlam{\vec y}{P_w} \\ |\vec y|=|\vec w|}
+    {N \lto{\tauat{\rr}} \upd{N}{\rr}{\mbind{P_w[\vec w/\vec y]}{x}{P}}}
+\end{mathpar}
+\caption{Semantics of minimal networks.  Throughout, $v$ is a value of the
+  local language.}
+\label{fig:c5-net}
+\end{figure}
+
+The network semantics is given in Figure~\ref{fig:c5-net}.  As in the
+choreography, the fix rule is applied by the role that enters, in the same
+step.
+
+\section{Endpoint projection}
+\label{sec:c5-epp}
+
+\begin{definition}[Projection]\label{def:c5-epp}
+  Values project to local values:
+  \[
+    \proj{x}{\rr}=x
+    \qquad
+    \proj{v}{\rr}=v
+    \qquad
+    \proj{\clam{x}{T}{C}}{\rr}=\nlam{x|_\rr}{\proj{C}{\rr}}
+    \qquad
+    \proj{\cfix{f}{T}{V}}{\rr}=\nfix{f}{\proj{V}{\rr}}
+  \]
+  where $x|_\rr$ is $x$ if $\rr\in\loc{T}$ and empty otherwise.  A located
+  value is projected only at the roles of its location, as
+  $\proj{\rho.u}{\rr}=\proj{u}{\rr}$, and $\alpha|_\rr$ is
+  $\proj{\alpha}{\rr}$ if $\rr\in\loc{\alpha}$ and empty otherwise.
+  Choreographies project as
+  \[
+  \proj{\cret{\alpha}}{\rr} =
+    \begin{cases}
+      \kw{ret}\;\proj{\alpha}{\rr} & \rr\in\loc{\alpha}\\
+      \kw{ret}\;\bot & \text{otherwise}
+    \end{cases}
+  \qquad
+  \qquad
+  \proj{\rt{S}{K}{D}}{\rr} =
+    \begin{cases}
+      \proj{K}{\rr} & \rr\in S\\
+      \proj{D}{\rr} & \text{otherwise}
+    \end{cases}
+  \]
+  and $\proj{\bind{x}{A}{C}}{\rr} = \pre{A}{x}{\rr}\,\proj{C}{\rr}$, where
+  the prefix of an action is $\varepsilon$ at every role not listed
+  below:
+  \[
+  \begin{array}{r@{\;\;=\;\;}l@{\qquad}l}
+    \pre{\pp.e}{x}{\pp} & x\leftarrow e\,;\\
+    \pre{\com{\pp}{u}{\qq}}{x}{\pp} & \nsend{\qq}{\proj{u}{\pp}}\,;\\
+    \pre{\com{\pp}{u}{\qq}}{x}{\qq} & x\leftarrow\nrecv{\pp}\,;\\
+    \pre{A}{x}{\pp} & x\leftarrow\sendbr{Q}{\proj{u}{\pp}}{\proj{C_1}{\pp}}{\proj{C_2}{\pp}}\,;
+      & A=\cif{\pp}{u}{C_1}{C_2},\ Q=\rcv{A}\\
+    \pre{A}{x}{\rr} & x\leftarrow\recvbr{\pp}{\proj{C_1}{\rr}}{\proj{C_2}{\rr}}\,;
+      & \text{the same } A,\ \rr\in Q\\
+    \pre{\rho.u(\alpha)}{x}{\rr} & x\leftarrow\proj{u}{\rr}(\alpha|_\rr)\,; & \rr\in\rho.
+  \end{array}
+  \]
+\end{definition}
+
+Lemma~\ref{lem:c1-prefix} holds in the form of Chapter~\ref{ch:ho}: if
+$\pre{A}{x}{\rr}$ does not bind $x$, then $\rr\notin\loc{A}$.  Projection
+preserves the shape of a value in both directions: $\proj{u}{\rr}$ is a value
+of the local language exactly when $u$ is, in which case
+$\proj{u}{\rr}=u$, and it is a literal exactly when $u$ is.
+
+\begin{definition}[Well-formedness]\label{def:c5-wf}
+  $\WF(\cret{\alpha})$ holds, $\WF(\bind{x}{A}{C})$ holds if $\WF(C)$ does,
+  and $\WF(\rt{S}{K}{D})$ holds if $K=\bind{x}{\rho.u(\alpha)}{C}$ with $u$
+  a literal (the \emph{shape condition}) and
+  \begin{enumerate}[label=(\roman*),nosep]
+  \item $\WF(K)$ and $\WF(D)$,
+  \item $S\subseteq\rho$, and
+  \item $\proj{D}{\qq}=\proj{\unfold{K}}{\qq}$ for every $\qq\in S$.
+  \end{enumerate}
+\end{definition}
+
+Conditions (i)--(iii) are those of Definition~\ref{def:c3-wf}, and the shape
+condition replaces the syntactic sort of calls.  Every source choreography
+is well-formed.
+
+\section{Correctness}
+\label{sec:c5-correct}
+
+The development of Chapter~\ref{ch:ho} carries over, with a single
+parameter in place of a vector.  We give the lemmas whose statements or
+proofs change, and the new lemma on unrolling.
+
+\begin{lemma}[Substitution]\label{lem:c5-subst}
+  If $\Gamma,x{:}T\vdash C:T'$ and $\Gamma\vdash u:T$, then $C[u/x]$ is
+  defined and $\Gamma\vdash C[u/x]:T'$.  The same holds for values, located
+  values and actions.
+\end{lemma}
+\begin{proof}
+  By induction on the typing derivation.  If $x$ is free in a local
+  expression $e$, checked as $\Gamma,x{:}T\vdash_\pp e$, then $T=\pp$, so $u$
+  is a value of the local language or a variable held at $\pp$, and
+  $\Gamma\vdash_\pp e[u/x]$ as in Lemma~\ref{lem:c1-subst}.  An occurrence
+  of $x$ as a value is replaced by the derivation of $\Gamma\vdash u:T$,
+  after weakening, and the located value around it keeps its type.  The side
+  condition $\roles{C}\subseteq\rho$ of the abstraction rule is unaffected,
+  because roles are stable under substitution.
+\end{proof}
+
+\begin{lemma}[Projection is local]\label{lem:c5-local}
+  If $\Gamma\vdash C:T$, then every free variable $x$ of $\proj{C}{\rr}$
+  satisfies $\rr\in\loc{\Gamma(x)}$.  The same holds for $\proj{u}{\rr}$
+  when $\Gamma\vdash u:T$ and $\rr\in\loc{T}$.
+\end{lemma}
+\begin{proof}
+  As for Lemma~\ref{lem:c4-local}, with these value cases.  A variable has
+  type $\Gamma(x)$, and a value $v$ is closed.  For an abstraction
+  $\clam{x}{T_1}{C}$, the free variables of $\proj{C}{\rr}$ are held at
+  $\rr$ under $\Gamma,x{:}T_1$ by the induction hypothesis, and $x$ is one of
+  them only if $\rr\in\loc{T_1}$, when the projection binds it.  For a
+  fixpoint $\cfix{f}{T}{V}$, $\rr\in\loc{T}$, so the induction hypothesis
+  applies to $V$, and $f$ is bound by the projection.  A located value is
+  projected only at roles of its location, which is the location of its
+  type.
+\end{proof}
+
+\begin{lemma}[Projection commutes with substitution]\label{lem:c5-psubst}
+  If $C[u/x]$ is defined, then
+  $\proj{C[u/x]}{\rr}=\proj{C}{\rr}[\proj{u}{\rr}/x]$, and likewise for
+  values.  Hence, if $\Gamma,x{:}T\vdash C:T'$, $\Gamma\vdash u:T$ and
+  $\rr\notin\loc{T}$, then $\proj{C[u/x]}{\rr}=\proj{C}{\rr}$.
+\end{lemma}
+\begin{proof}
+  By induction.  Every choice that projection makes depends on roles,
+  receivers, locations of located values, or parameter types, and
+  substitution changes none of them.  Where $x$ is free in a local
+  expression, $u$ is an atom, and $\proj{u}{\rr}=u$.  The second claim
+  follows by Lemma~\ref{lem:c5-local}.
+\end{proof}
+
+Erasure (Lemma~\ref{lem:c2-erase}), typing of bind
+(Lemma~\ref{lem:c2-tbind}) and projection commutes with bind
+(Lemma~\ref{lem:c4-pbind}) hold with the same proofs.  In the return case of
+the last, $\proj{\alpha}{\rr}=\proj{\pay{\alpha}}{\rr}$ by definition.
+
+\begin{lemma}[Unrolling]\label{lem:c5-unroll}
+  Let $u$ be a literal.
+  \begin{enumerate}[label=(\roman*),nosep]
+  \item\label{it:c5-unroll-type} If $\Gamma\vdash u:T$ then $\Gamma\vdash\unroll{u}:T$.
+  \item\label{it:c5-unroll-proj} $\proj{\unroll{u}}{\rr}=\unroll{\proj{u}{\rr}}$ for every role $\rr$.
+  \item\label{it:c5-unroll-subst} $\unroll{u}[u'/y]=\unroll{u[u'/y]}$.
+  \end{enumerate}
+\end{lemma}
+\begin{proof}
+  All three are immediate for an abstraction.  Let $u=\cfix{f}{T}{V}$.
+  \ref{it:c5-unroll-type} From $\Gamma,f{:}T\vdash V:T$ and
+  $\Gamma\vdash u:T$, Lemma~\ref{lem:c5-subst} gives $\Gamma\vdash V[u/f]:T$.
+  \ref{it:c5-unroll-proj} By Lemma~\ref{lem:c5-psubst},
+  $\proj{V[u/f]}{\rr}=\proj{V}{\rr}[\nfix{f}{\proj{V}{\rr}}/f]$, which is
+  $\unroll{\nfix{f}{\proj{V}{\rr}}}$.
+  \ref{it:c5-unroll-subst} The two substitutions commute, since $f$ is bound
+  in $u$, so it is distinct from $y$ and not free in $u'$.
+\end{proof}
+
+\begin{lemma}[Unfolding]\label{lem:c5-unfold}
+  Let $\Gamma\vdash K:T$ with $K=\bind{x}{\rho.u(\alpha)}{C}$ and $u$ a
+  literal.
+  \begin{enumerate}[label=(\roman*),nosep]
+  \item\label{it:c5-unf-in} If $\rr\in\rho$, then
+    $\proj{K}{\rr}=x\leftarrow\proj{u}{\rr}(\alpha|_\rr)\,;\,\proj{C}{\rr}$,
+    and \rn{N-Call} replaces it by $\proj{\unfold{K}}{\rr}$.
+  \item\label{it:c5-unf-out} If $\rr\notin\rho$, then $\proj{\unfold{K}}{\rr}=\proj{K}{\rr}$.
+  \end{enumerate}
+\end{lemma}
+\begin{proof}
+  By typing, $\Gamma\vdash u:\farr{T_1}{\rho}{T_2}$ and
+  $\Gamma\vdash\alpha:T_1$.  Let $\unroll{u}=\clam{y}{T_1}{C_u}$ and
+  $C_u^\ast=C_u[\pay{\alpha}/y]$.  By
+  Lemma~\ref{lem:c5-unroll}\ref{it:c5-unroll-type} and the abstraction
+  rule, $\Gamma,y{:}T_1\vdash C_u:T_2$ and $\roles{C_u}\subseteq\rho$, so
+  $\Gamma\vdash C_u^\ast:T_2$ by Lemma~\ref{lem:c5-subst}, and by
+  Lemma~\ref{lem:c4-pbind},
+  $\proj{\unfold{K}}{\rr}=\mbind{\proj{C_u^\ast}{\rr}}{x}{\proj{C}{\rr}}$.
+
+  \ref{it:c5-unf-in} By Lemma~\ref{lem:c5-unroll}\ref{it:c5-unroll-proj},
+  $\proj{u}{\rr}$ is a literal that unrolls to
+  $\nlam{y|_\rr}{\proj{C_u}{\rr}}$.  Since $\loc{\alpha}=\loc{T_1}$, the
+  parameter $y|_\rr$ and the argument $\alpha|_\rr$ are both present or both
+  absent, so \rn{N-Call} fires and produces
+  $\mbind{\proj{C_u}{\rr}[\alpha|_\rr/y|_\rr]}{x}{\proj{C}{\rr}}$.  If
+  $\rr\in\loc{T_1}$, then
+  $\proj{C_u}{\rr}[\proj{\alpha}{\rr}/y]=\proj{C_u^\ast}{\rr}$ by
+  Lemma~\ref{lem:c5-psubst}.  Otherwise
+  $\proj{C_u}{\rr}=\proj{C_u^\ast}{\rr}$ by the second claim of that lemma.
+
+  \ref{it:c5-unf-out} The prefix of the application at $\rr$ is empty, and
+  $\rr\notin\rho\supseteq\roles{C_u}=\roles{C_u^\ast}$, so by erasure
+  \[
+    \proj{\unfold{K}}{\rr}=\mbind{(\kw{ret}\;\bot)}{x}{\proj{C}{\rr}}=\proj{C}{\rr}=\proj{K}{\rr}.\qedhere
+  \]
+\end{proof}
+
+\paragraph{The rest of the development.}
+\begin{itemize}
+\item \emph{Subject reduction}: as before, with $\Gamma\vdash\unfold{K}:T$
+  for \rn{Call} as in the proof of Lemma~\ref{lem:c5-unfold}.
+\item \emph{Substitution and well-formedness}
+  (Lemma~\ref{lem:c3-wfsubst}): in part~\ref{it:c3-ws-bind}, the
+  commutation of unfolding with substitution also uses
+  Lemma~\ref{lem:c5-unroll}\ref{it:c5-unroll-subst}; in
+  part~\ref{it:c3-ws-subst}, the shape condition is preserved because
+  substitution maps a literal to a literal.
+\item \emph{View}, \emph{Entering} and \emph{preservation of
+  well-formedness} (Lemmas~\ref{lem:c3-view}, \ref{lem:c3-entering}
+  and~\ref{lem:c3-wfpres}) hold with the same proofs, using
+  Lemma~\ref{lem:c5-unfold} in place of Lemma~\ref{lem:c3-unfold}.
+  \rn{Call} establishes the shape condition, and \rn{Enter} and \rn{Inside}
+  leave $K$ unchanged.
+\item \emph{Frames} (Lemmas~\ref{lem:c1-cframe} and~\ref{lem:c1-nframe}):
+  as in Chapter~\ref{ch:fun}.
+\item \emph{Network inversion} (Lemma~\ref{lem:c1-inv}): items (a)--(e) are
+  as before, where a send or a send-and-branch fires only if its local value
+  is a value $v$ of the local language.  Item (f) becomes: if
+  $N(\rr)=x\leftarrow w(\vec w)\,;\,P$ and $\rr\in\roles{\ell}$, then $w$ is
+  a literal, $\unroll{w}=\nlam{\vec y}{P_w}$ with $|\vec y|=|\vec w|$, the
+  rule is \rn{N-Call}, $\ell=\tauat{\rr}$, and
+  $N'=\upd{N}{\rr}{\mbind{P_w[\vec w/\vec y]}{x}{P}}$.
+\end{itemize}
+In the soundness proof, a step at the sender of $\com{\pp}{u}{\qq}$ or at
+the guard holder of a conditional forces $\proj{u}{\pp}$ to be a value of
+the local language, so $u$ is that value; and a step at a participant $\rr$
+of $\rho.u(\alpha)$ forces $\proj{u}{\rr}$ to be a literal, so $u$ is a
+literal and \rn{Call} applies.
+
+\begin{theorem}[EPP is lockstep]\label{thm:c5-epp}
+  Suppose $\Gamma\vdash C:T$ and $\WF(C)$.
+  \begin{enumerate}[label=(\arabic*),nosep]
+  \item If $C\lto{\ell}C'$, then $\projn{C}\lto{\ell}\projn{C'}$.
+  \item If $\projn{C}\lto{\ell}N$, then $C\lto{\ell}C'$ for some $C'$ with $N=\projn{C'}$.
+  \end{enumerate}
+  Consequently $\{(C,\projn{C})\mid\Gamma\vdash C:T\text{ and }\WF(C)\}$ is a
+  strong bisimulation with identical labels.
+\end{theorem}
+\begin{proof}
+  As for Theorem~\ref{thm:c4-epp}, with Lemma~\ref{lem:c5-unfold} in place
+  of Lemma~\ref{lem:c4-unfold}.
+\end{proof}
+
+\begin{theorem}[Deadlock freedom]\label{thm:c5-df}
+  Assume (L2), (L3), $\emptyset\vdash C:T$ and $\WF(C)$.  Every network
+  reachable from $\projn{C}$ is either terminated or can step.
+\end{theorem}
+\begin{proof}
+  As for Theorem~\ref{thm:c4-df}.  The payload of a closed head
+  communication and the guard of a closed head conditional have a role type,
+  so by Lemma~\ref{lem:c5-canon} they are values of the local language, and
+  the guard is a boolean by (L3).  The function of a closed head
+  application has a function type, so it is a literal, and its role set
+  contains the nonempty location of the result type, so \rn{Call} fires.
+\end{proof}
+
+Confluence holds on networks as in Remark~\ref{rem:c3-diamond}, under the
+same assumptions.
+
+\section{Derived forms}
+\label{sec:c5-derived}
+
+The constructs left out of this chapter can be written in terms of the
+remaining ones.
+
+\begin{itemize}
+\item \emph{Several arguments.}  A literal
+  $\cfun{f}{x_1{:}T_1,\ldots,x_n{:}T_n}{\rho}{T}{C}$ of
+  Chapter~\ref{ch:ho}, with $n\ge 1$, becomes the fixpoint
+  \[
+    \cfix{f}{T^\ast}{\clam{x_1}{T_1}{\cret{\rho.\big(\clam{x_2}{T_2}{\cdots\cret{\rho.(\clam{x_n}{T_n}{C^\ast})}}\big)}}}
+  \]
+  of type
+  $T^\ast=\farr{T_1}{\rho}{\farr{T_2}{\rho}{\cdots\farr{T_n}{\rho}{T}}}$,
+  and an application $\bind{x}{\rho.F(\alpha_1,\ldots,\alpha_n)}{C}$
+  becomes
+  $\bind{g_1}{\rho.F^\ast(\alpha_1)}{\cdots\bind{g_{n-1}}{\rho.g_{n-2}(\alpha_{n-1})}{\bind{x}{\rho.g_{n-1}(\alpha_n)}{C^\ast}}}$,
+  where ${}^\ast$ translates nested literals and applications in the same
+  way.  Every intermediate type has location $\rho$, so all are valid.
+  The translation is not step for step: each of the $n$ applications is
+  entered by every role of $\rho$, so a call takes $n\cdot|\rho|$ entries
+  instead of $|\rho|$.
+\item \emph{No arguments.}  A function of no arguments is an abstraction
+  $\clam{z}{\pp}{C}$ of type $\farr{\pp}{\rho}{T}$ with an unused parameter,
+  applied to a dummy argument $\pp.v$.  If $\pp\notin\rho$, no role keeps
+  the parameter or the argument,
+  and every role's local function has no parameter, as in
+  Chapter~\ref{ch:fun}.
+\item \emph{Naming a value.}  $\kw{let}\;x=\alpha\;\kw{in}\;C$ stands for
+  $C[\pay{\alpha}/x]=\mbind{(\cret{\alpha})}{x}{C}$ and takes no step.  No
+  action can do this for a function held at several roles: it would be one
+  step of all of them with no network counterpart.
+\item \emph{Returning an action.}  $\cret{A}$ stands for
+  $\bind{x}{A}{\cret{\loc{A}.x}}$.  It adds no step, because derived bind
+  has a right unit: $\mbind{C}{x}{\cret{\loc{T}.x}}=C$ for a source
+  choreography $C$ with $\Gamma\vdash C:T$, by induction on its spine, since
+  a return $\cret{\alpha}$ of type $T$ has $\loc{\alpha}=\loc{T}$.  For
+  instance, \rn{Cast} takes
+  $\bind{x}{\cif{\pp}{v}{C_\ttrue}{C_\ffalse}}{\cret{\loc{A}.x}}$ directly
+  to $C_v$.
+\end{itemize}
+
+\section{Worked example}
+\label{sec:c5-example}
+
+The loop of \S\ref{sec:c3-example}, curried.  Let $\rho=\{\pp,\qq,\rr\}$,
+$T_k=\farr{\qq}{\rho}{\rr}$ and $T_L=\farr{\pp}{\rho}{T_k}$, and
+\[
+\begin{array}{r@{\;\;}l}
+  \mathit{Loop} \;=\; & \cfix{\mathit{loop}}{T_L}{\clam{x}{\pp}{\cret{\rho.(\clam{k}{\qq}{B(x,k)})}}}\\[1ex]
+  B(x,k) \;=\; & \bind{y}{\pp.(2\cdot x)}{\bind{b}{\pp.(y>10)}{\bind{z}{\cif{\pp}{b}{T(y)}{E(y,k)}}{\cret{\rr.z}}}}\\
+  T(y) \;=\; & \bind{w}{\com{\pp}{y}{\qq}}{\bind{u}{\com{\qq}{w}{\rr}}{\cret{\rr.u}}}\\
+  E(y,k) \;=\; & \bind{k'}{\qq.(k+1)}{\bind{g}{\rho.\mathit{loop}(\pp.y)}{\bind{v}{\rho.g(\qq.k')}{\cret{\rr.v}}}}
+\end{array}
+\]
+The inner abstraction mentions $x$, which is held at $\pp$ and substituted
+when the outer one is entered (Choice~\ref{cho:c4-open}).  Its type $T_k$
+has location $\rho$, so $T_L$ is valid and the outer function returns a
+closure that all three roles can run.  The program is
+\[
+  C \;=\; \bind{h}{\rho.\mathit{Loop}(\pp.3)}{\bind{\mathit{res}}{\rho.h(\qq.0)}{\bind{m}{\rr.(\mathit{res}+1)}{\cret{\rr.m}}}}.
+\]
+The projections of $\mathit{Loop}$ are
+\[
+\begin{array}{r@{\;\;}l}
+  \pp: & \nfix{\mathit{loop}}{\nlam{x}{\kw{ret}\;\nlam{}{y\leftarrow 2\cdot x\,;\;b\leftarrow y>10\,;}}}\\
+       & \quad z\leftarrow\sendbr{\{\qq,\rr\}}{b}{(\nsend{\qq}{y}\,;\,\kw{ret}\;\bot)}{(g\leftarrow\mathit{loop}(y)\,;\,v\leftarrow g()\,;\,\kw{ret}\;\bot)}\,;\;\kw{ret}\;\bot\\[1ex]
+  \qq: & \nfix{\mathit{loop}}{\nlam{}{\kw{ret}\;\nlam{k}{z\leftarrow\pp?\big((w\leftarrow\nrecv{\pp}\,;\,\nsend{\rr}{w}\,;\,\kw{ret}\;\bot),}}}\\
+       & \quad (k'\leftarrow k+1\,;\,g\leftarrow\mathit{loop}()\,;\,v\leftarrow g(k')\,;\,\kw{ret}\;\bot)\big)\,;\;\kw{ret}\;\bot\\[1ex]
+  \rr: & \nfix{\mathit{loop}}{\nlam{}{\kw{ret}\;\nlam{}{z\leftarrow\recvbr{\pp}{(u\leftarrow\nrecv{\qq}\,;\,\kw{ret}\;u)}{(g\leftarrow\mathit{loop}()\,;\,v\leftarrow g()\,;\,\kw{ret}\;v)}\,;\;\kw{ret}\;z}}}
+\end{array}
+\]
+and the program projects to
+$h\leftarrow\proj{\mathit{Loop}}{\pp}(3)\,;\,\mathit{res}\leftarrow h()\,;\,\kw{ret}\;\bot$
+at $\pp$,
+$h\leftarrow\proj{\mathit{Loop}}{\qq}()\,;\,\mathit{res}\leftarrow h(0)\,;\,\kw{ret}\;\bot$
+at $\qq$, and
+$h\leftarrow\proj{\mathit{Loop}}{\rr}()\,;\,\mathit{res}\leftarrow h()\,;\,m\leftarrow\mathit{res}+1\,;\,\kw{ret}\;m$
+at $\rr$.  Each role keeps exactly the parameters it holds: $x$ at $\pp$,
+$k$ at $\qq$, and none at $\rr$.
+
+Write $H=\clam{k}{\qq}{B(3,k)[\mathit{Loop}/\mathit{loop}]}$ and
+$R(z)=\bind{m}{\rr.(z+1)}{\cret{\rr.m}}$.  One run begins
+\begin{align*}
+  C &\lto{\tauat{\pp}} \rt{\{\qq,\rr\}}{C}{D_1}
+    && \text{\rn{Call}, unrolling } \mathit{Loop}\\
+  &\lto{\tauat{\pp}} \rt{\{\qq,\rr\}}{C}{\rt{\{\qq,\rr\}}{D_1}{D_2}}
+    && \text{\rn{Inside}, \rn{Call}}\\
+  &\lto{\tauat{\qq}}\;\lto{\tauat{\qq}} \rt{\{\rr\}}{C}{\rt{\{\rr\}}{D_1}{D_2}}
+    && \text{\rn{Enter}; \rn{Inside}, \rn{Enter}}\\
+  &\lto{\tauat{\rr}}\;\lto{\tauat{\rr}} D_2
+    && \text{\rn{Enter}, twice}
+\end{align*}
+where
+\[
+\begin{array}{r@{\;\;}l}
+  D_1 \;=\; \unfold{C} \;=\; & \bind{\mathit{res}}{\rho.H(\qq.0)}{R(\mathit{res})}\\
+  D_2 \;=\; \unfold{D_1} \;=\; & \bind{y}{\pp.(2\cdot 3)}{\bind{b}{\pp.(y>10)}{}}\\
+    & \bind{z}{\cif{\pp}{b}{T(y)}{E(y,0)[\mathit{Loop}/\mathit{loop}]}}{R(z)}.
+\end{array}
+\]
+In the first step, unrolling $\mathit{Loop}$ and substituting $3$ for $x$
+gives $\cret{\rho.H}$, and derived bind passes $H$ to the continuation, so
+$D_1$ applies $H$ directly.  After the second step, both runtime terms are
+well-formed.  Their first components apply the literals $\mathit{Loop}$ and
+$H$.  At $\qq$ and $\rr$, which have entered neither, the inner term
+projects as $D_1=\unfold{C}$ does, as condition (iii) of the outer term
+requires, and $D_2=\unfold{D_1}$ satisfies that condition for the inner
+term.  As in \S\ref{sec:c3-example}, $\pp$ may instead run ahead
+and compute $y$ and $b$ through both runtime terms before the others enter.
+
+From $D_2$ the run proceeds as in \S\ref{sec:c3-example}, with each round
+taking six entries, two applications times three roles, where
+Chapter~\ref{ch:fun} took three.  In the first round the guard is $\ffalse$,
+and the else branch applies $\mathit{Loop}$ to $\pp.6$ and the resulting
+closure to $\qq.k'$.  In the second, $2\cdot 6=12>10$, the value $12$
+travels from $\pp$ to $\qq$ to $\rr$, and the run ends in $\cret{\rr.13}$.
+
+%======================================================================
 \chapter*{Summary}
 \addcontentsline{toc}{chapter}{Summary}
 %======================================================================
 
-Each chapter added one feature and kept the correspondence between a
-choreography and its projection exact.  The table lists what each feature
+Each of the first four chapters added one feature, and the fifth removed
+what the fourth did not need.  All of them kept the correspondence between
+a choreography and its projection exact.  The table lists what each chapter
 cost in the proofs.
 
 \begin{center}
@@ -2637,7 +3439,10 @@ cost in the proofs.
     unfolding; view; entering\\
   \ref{ch:ho} Higher-order & literals located at role sets; application $\rho.F(\vec\alpha)$ &
     substitution, locality and both commutation lemmas restated for
-    location sets; unfolding re-proved
+    location sets; unfolding re-proved\\
+  \ref{ch:min} Minimal & one sort of values; one-argument $\lambda$;
+    $\kw{fix}$, unrolled on entry &
+    unique types; canonical forms; unrolling; unfolding restated
 \end{tabular}
 \end{center}
 
@@ -2651,13 +3456,115 @@ alone then blocks variables bound by pending actions.  Finally, branches and
 function bodies never step before they are selected or entered.  They stay
 source syntax, so roles, receivers and annotations are stable, bind is
 applied only to source terms, and the one runtime term needs only one
-invariant.
+invariant.  Chapter~\ref{ch:related} discusses what these decisions cost
+compared with other approaches, chiefly the coarser knowledge of choice
+that the multicast provides.
 
-\begin{thebibliography}{1}
+\begin{thebibliography}{99}
 \bibitem{cc}
 Lu\'is Cruz-Filipe and Fabrizio Montesi.
 \newblock A core model for choreographic programming.
 \newblock \emph{Theoretical Computer Science}, 802:38--66, 2020.
+
+\bibitem{pc17}
+Lu\'is Cruz-Filipe and Fabrizio Montesi.
+\newblock Procedural choreographic programming.
+\newblock In \emph{Formal Techniques for Distributed Objects, Components,
+  and Systems (FORTE 2017)}, volume 10321 of \emph{LNCS}, pages 92--107.
+  Springer, 2017.
+
+\bibitem{montesi-book}
+Fabrizio Montesi.
+\newblock \emph{Introduction to Choreographies}.
+\newblock Cambridge University Press, 2023.
+
+\bibitem{cmp-jar23}
+Lu\'is Cruz-Filipe, Fabrizio Montesi, and Marco Peressotti.
+\newblock A formal theory of choreographic programming.
+\newblock \emph{Journal of Automated Reasoning}, 67(2):21, 2023.
+
+\bibitem{chorlambda22}
+Lu\'is Cruz-Filipe, Eva Graversen, Lovro Lugovi\'c, Fabrizio Montesi, and
+  Marco Peressotti.
+\newblock Functional choreographic programming.
+\newblock In \emph{Theoretical Aspects of Computing (ICTAC 2022)}, volume
+  13572 of \emph{LNCS}, pages 212--237. Springer, 2022.
+
+\bibitem{chorlambda-arxiv}
+Lu\'is Cruz-Filipe, Eva Graversen, Lovro Lugovi\'c, Fabrizio Montesi, and
+  Marco Peressotti.
+\newblock Functional choreographic programming.
+\newblock Full version, arXiv:2111.03701, 2022.
+
+\bibitem{chorlambda23}
+Lu\'is Cruz-Filipe, Eva Graversen, Lovro Lugovi\'c, Fabrizio Montesi, and
+  Marco Peressotti.
+\newblock Modular compilation for higher-order functional choreographies.
+\newblock In \emph{37th European Conference on Object-Oriented Programming
+  (ECOOP 2023)}, volume 263 of \emph{LIPIcs}, pages 7:1--7:37, 2023.
+
+\bibitem{polychor24}
+Eva Graversen, Andrew~K. Hirsch, and Fabrizio Montesi.
+\newblock Alice or {B}ob?: Process polymorphism in choreographies.
+\newblock \emph{Journal of Functional Programming}, 34:e1, 2024.
+
+\bibitem{pirouette22}
+Andrew~K. Hirsch and Deepak Garg.
+\newblock Pirouette: Higher-order typed functional choreographies.
+\newblock \emph{Proceedings of the ACM on Programming Languages}, 6(POPL):23:1--23:27, 2022.
+
+\bibitem{relax25}
+Dan Plyukhin, Xueying Qin, and Fabrizio Montesi.
+\newblock Relax! {T}he semilenient core of choreographic programming
+  (functional pearl).
+\newblock \emph{Proceedings of the ACM on Programming Languages},
+  9(ICFP):947--973, 2025.
+
+\bibitem{ozone24}
+Dan Plyukhin, Marco Peressotti, and Fabrizio Montesi.
+\newblock Ozone: Fully out-of-order choreographies.
+\newblock In \emph{38th European Conference on Object-Oriented Programming
+  (ECOOP 2024)}, volume 313 of \emph{LIPIcs}, pages 31:1--31:28, 2024.
+
+\bibitem{haschor23}
+Gan Shen, Shun Kashiwa, and Lindsey Kuper.
+\newblock {HasChor}: Functional choreographic programming for all
+  (functional pearl).
+\newblock \emph{Proceedings of the ACM on Programming Languages},
+  7(ICFP):541--565, 2023.
+
+\bibitem{enclaves23}
+Shun Kashiwa, Gan Shen, Soroush Zare, and Lindsey Kuper.
+\newblock Portable, efficient, and practical library-level choreographic
+  programming.
+\newblock arXiv:2311.11472, 2023.
+
+\bibitem{multichor25}
+Mako Bates, Shun Kashiwa, Syed Jafri, Gan Shen, Lindsey Kuper, and
+  Joseph~P. Near.
+\newblock Efficient, portable, census-polymorphic choreographic programming.
+\newblock \emph{Proceedings of the ACM on Programming Languages},
+  9(PLDI):1143--1166, 2025.
+
+\bibitem{ebsmall24}
+Mako Bates and Joseph~P. Near.
+\newblock We know {I} know you know; choreographic programming with
+  multicast and multiply located values.
+\newblock arXiv:2403.05417, 2024.
+
+\bibitem{shenkuper24}
+Gan Shen and Lindsey Kuper.
+\newblock Toward verified library-level choreographic programming with
+  algebraic effects.
+\newblock arXiv:2407.06509, 2024.
+
+\bibitem{bohler26}
+Timon B\"ohler, Simon Daniel, David Richter, Pascal Weisenburger, and Mira
+  Mezini.
+\newblock Mechanizing choreographic programs and {H}oare logic with state
+  transformers.
+\newblock In \emph{Type-Driven Development (TyDe 2026)}, to appear.
+  arXiv:2608.16346.
 \end{thebibliography}
 
 \end{document}
